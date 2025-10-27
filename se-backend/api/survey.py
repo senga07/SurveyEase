@@ -95,8 +95,9 @@ async def process_survey_stream(survey_graph, current_state, conversation_id):
                     for node_name, node_state in chunk.items():
                         if isinstance(node_state, dict) and "messages" in node_state:
                             last_message = node_state["messages"][-1]
-                            content = last_message.content if hasattr(last_message, 'content') else str(last_message)
-                            yield f"data: {json.dumps(content, ensure_ascii=False)}\n\n"
+                            if hasattr(last_message, 'content') and isinstance(last_message, AIMessage):
+                                content = last_message.content
+                                yield f"data: {json.dumps(content, ensure_ascii=False)}\n\n"
                             break
     except Exception as e:
         logger.error(f"流式处理失败: {str(e)}")

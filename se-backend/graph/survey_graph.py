@@ -113,11 +113,8 @@ class SurveyGraph():
         is_end = "END" in response_content.upper() or len(current_step_messages) >= max_turns * 2 + 1
 
         if is_end:
-            msgs = messages if "END" in response_content.upper() else messages + [AIMessage(content=response_content)]
             updated_state = {
                 **state,
-                "messages": msgs,
-                "current_step": current_step + 1,
                 "current_step_finish": True,
                 "current_step_messages": [],
             }
@@ -132,9 +129,16 @@ class SurveyGraph():
         return updated_state
 
     def _get_user_answer(self, state: SurveyGraphState):
+        current_step_messages = state["current_step_messages"]
+        current_step_finish = state["current_step_finish"]
+        if len(current_step_messages) == 0 and current_step_finish:
+            return {
+                **state,
+                "current_step": state["current_step"] + 1,
+            }
+
         user_input = interrupt(state)
         user_message = HumanMessage(content=user_input)
-        current_step_messages = state["current_step_messages"]
         updated_state = {
             **state,
             "messages": state["messages"] + [user_message],
