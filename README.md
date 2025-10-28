@@ -4,6 +4,8 @@
 
 SurveyEase 是一个基于 AI 的智能调研平台，专门用于进行消费者调研。通过聊天对话的方式，系统能够自动引导用户完成深度调研，收集有价值的用户洞察和反馈。
 
+<img src="images/main.png" alt="Alt text" width="600" height="500">
+
 ### 项目场景
 
 - **消费者调研**：通过自然对话收集用户对产品、服务的真实反馈
@@ -181,11 +183,16 @@ npm run start
 3. 添加调研步骤和问题
 4. 保存模板
 
+<img src="images/config.png" alt="Alt text" width="600" height="500">
+<img src="images/config2.png" alt="Alt text" width="600" height="500">
+
 ### 2. 开始调研对话
 1. 选择已创建的调研模板
 2. 点击"开始调研"
 3. 与 AI 调研员进行自然对话
 4. 系统会根据预设步骤引导调研
+
+<img src="images/chat.png" alt="Alt text" width="600" height="500">
 
 ### 3. 管理调研数据
 - 对话历史自动保存
