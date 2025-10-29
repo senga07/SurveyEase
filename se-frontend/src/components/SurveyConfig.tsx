@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './SurveyConfig.css';
-import { SurveyStep, SurveyTemplate } from '../types';
+import { SurveyStep, SurveyTemplate, SurveyBranch } from '../types';
 import { ApiService } from '../services/api';
 
 interface SurveyConfigProps {
@@ -81,6 +81,46 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
       step.id === id ? { ...step, content } : step
     ));
   };
+
+  const updateStepType = (id: string, type: 'linear' | 'condition') => {
+    setSteps(steps.map(step => 
+      step.id === id ? { ...step, type } : step
+    ));
+  };
+
+
+  const updateStepDefaultBranch = (id: string, default_branch: string) => {
+    setSteps(steps.map(step => 
+      step.id === id ? { ...step, default_branch } : step
+    ));
+  };
+
+  const addBranch = (stepId: string) => {
+    setSteps(steps.map(step => 
+      step.id === stepId 
+        ? { 
+            ...step, 
+            branches: [...(step.branches || []), { id: '', condition: '', next_step: '' }]
+          } 
+        : step
+    ));
+  };
+
+
+  const updateBranch = (stepId: string, branchIndex: number, field: keyof SurveyBranch, value: string) => {
+    setSteps(steps.map(step => 
+      step.id === stepId 
+        ? { 
+            ...step, 
+            branches: step.branches?.map((branch, index) => 
+              index === branchIndex ? { ...branch, [field]: value } : branch
+            ) || []
+          } 
+        : step
+    ));
+  };
+
+
 
   const saveTemplate = async () => {
     setIsLoading(true);
@@ -202,6 +242,28 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
             <div key={step.id} className="step-item">
               <div className="step-header">
                 <span className="step-number">步骤 {index + 1}</span>
+                <div className="step-type-selector">
+                  <label>
+                    <input
+                      type="radio"
+                      name={`step-type-${step.id}`}
+                      value="linear"
+                      checked={step.type === 'linear' || !step.type}
+                      onChange={() => updateStepType(step.id, 'linear')}
+                    />
+                    顺序跳转
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name={`step-type-${step.id}`}
+                      value="condition"
+                      checked={step.type === 'condition'}
+                      onChange={() => updateStepType(step.id, 'condition')}
+                    />
+                    条件跳转
+                  </label>
+                </div>
                 {steps.length > 1 && (
                   <button 
                     type="button" 
@@ -225,6 +287,81 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                   {step.content.length}/500
                 </div>
               </div>
+
+
+              {/* 条件跳转配置 */}
+              {step.type === 'condition' && (
+                <div className="condition-config">
+                  <h4>跳转规则</h4>
+                  
+                  <div className="jump-rule-display">
+                    <div className="rule-line condition-line">
+                      <div className="condition-group">
+                        <span className="rule-text">如果</span>
+                        <input
+                          type="text"
+                          className="condition-input"
+                          value={step.branches?.[0]?.condition || ''}
+                          onChange={(e) => {
+                            if (step.branches?.[0]) {
+                              updateBranch(step.id, 0, 'condition', e.target.value);
+                            } else {
+                              addBranch(step.id);
+                              setTimeout(() => {
+                                updateBranch(step.id, 0, 'condition', e.target.value);
+                              }, 100);
+                            }
+                          }}
+                          placeholder="例如：用户提到了元气森林"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="rule-line jump-line">
+                      <div className="jump-group">
+                        <span className="rule-text">跳转到</span>
+                        <select
+                          className="step-select"
+                          value={step.branches?.[0]?.next_step || ''}
+                          onChange={(e) => {
+                            if (step.branches?.[0]) {
+                              updateBranch(step.id, 0, 'next_step', e.target.value);
+                            } else {
+                              addBranch(step.id);
+                              setTimeout(() => {
+                                updateBranch(step.id, 0, 'next_step', e.target.value);
+                              }, 100);
+                            }
+                          }}
+                        >
+                          <option value="">请选择步骤</option>
+                          {steps.map((s, index) => (
+                            <option key={s.id} value={s.id}>
+                              步骤{index + 1}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      <div className="jump-group">
+                        <span className="rule-text">否则跳转到</span>
+                        <select
+                          className="step-select"
+                          value={step.default_branch || ''}
+                          onChange={(e) => updateStepDefaultBranch(step.id, e.target.value)}
+                        >
+                          <option value="">请选择步骤</option>
+                          {steps.map((s, index) => (
+                            <option key={s.id} value={s.id}>
+                              步骤{index + 1}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           <button 
@@ -235,6 +372,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
             + 添加步骤
           </button>
         </div>
+
 
         {/* 结束语配置 */}
         <div className="config-section steps-section">

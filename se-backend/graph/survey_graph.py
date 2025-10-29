@@ -26,10 +26,11 @@ class SurveyGraphState(TypedDict):
     current_step_messages: List[BaseMessage]
     thread_id: str
     end_message: str
+    step_metadata: List[Dict[str, Any]]  # 步骤元数据
 
 
 class SurveyGraph():
-    def __init__(self, steps: List[str]):
+    def __init__(self, steps: List[str], step_metadata: List[Dict[str, Any]] = None):
 
         self.logger = get_logger(__name__)
         self.config = service_manager.get_config()
@@ -37,13 +38,14 @@ class SurveyGraph():
         self.fast_llm = llms.get('fast_llm')
         self.store = service_manager.store
         self.steps = steps
+        self.step_metadata = step_metadata or []
         self.checkpointer = MemorySaver(serde=CustomSerializer())
         self.graph = self._build_graph()
 
         self.logger.info(f"SurveyGraph 实例创建完成，包含 {len(steps)} 个步骤")
 
     def _build_graph(self) -> CompiledStateGraph:
-        """构建条件执行图 - 根据节点完成状态决定下一步"""
+        """构建条件执行图 - 支持路径执行"""
         workflow = StateGraph(SurveyGraphState)
 
         if not self.steps:
@@ -67,7 +69,7 @@ class SurveyGraph():
                     self._should_continue,
                     {
                         "continue": str(i) + "_q",  # 继续当前步骤（多轮对话）
-                        "next": str(i + 1) + "_q",  # 进入下一步骤
+                        "next": self._get_next_step,  # 根据路径决定下一步
                     }
                 )
             else:
@@ -95,6 +97,58 @@ class SurveyGraph():
                 return "end"
         else:
             return "continue"
+
+    def _get_next_step(self, state: SurveyGraphState):
+        """根据条件跳转决定下一步"""
+        current_step = state.get("current_step")
+        step_metadata = state.get("step_metadata", [])
+        
+        # 获取当前步骤的元数据
+        current_step_meta = step_metadata[current_step] if current_step < len(step_metadata) else {}
+        
+        # 如果是条件节点，根据条件选择下一步
+        if current_step_meta.get("type") == "condition":
+            next_step_id = self._evaluate_condition(current_step_meta, state)
+            return self._find_step_by_id(next_step_id, step_metadata)
+        
+        # 如果是普通节点，按顺序执行下一步
+        return self._get_next_sequential_step(current_step, step_metadata)
+
+    def _evaluate_condition(self, step_meta: Dict[str, Any], state: SurveyGraphState) -> str:
+        """评估条件并返回下一步步骤ID"""
+        branches = step_meta.get("branches", [])
+        default_branch = step_meta.get("default_branch")
+        
+        # 获取用户最后一条消息
+        messages = state.get("messages", [])
+        if not messages:
+            return default_branch
+            
+        last_message = messages[-1]
+        user_response = last_message.content if hasattr(last_message, 'content') else str(last_message)
+        
+        # 评估条件
+        for branch in branches:
+            condition = branch.get("condition", "")
+            if condition and condition.lower() in user_response.lower():
+                return branch.get("next_step", default_branch)
+        
+        return default_branch
+
+    def _find_step_by_id(self, step_id: str, step_metadata: List[Dict[str, Any]]) -> str:
+        """根据步骤ID查找对应的节点"""
+        for i, step_meta in enumerate(step_metadata):
+            if step_meta.get("id") == step_id:
+                return f"{i}_q"
+        return "end_survey"
+
+    def _get_next_sequential_step(self, current_step: int, step_metadata: List[Dict[str, Any]]) -> str:
+        """获取下一个顺序步骤"""
+        next_step = current_step + 1
+        if next_step < len(step_metadata):
+            return f"{next_step}_q"
+        else:
+            return "end_survey"
 
     def _generate_question(self, state: SurveyGraphState):
 

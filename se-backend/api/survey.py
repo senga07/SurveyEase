@@ -37,7 +37,17 @@ async def chat_survey(request: ChatRequest):
     async def generate_stream(template):
         try:
             steps = [step["content"] for step in template["steps"]]
-            survey_graph = SurveyGraph(steps)
+            step_metadata = []
+            for step in template["steps"]:
+            step_meta = {
+                "id": step.get("id", ""),
+                "type": step.get("type", "linear"),
+                "default_branch": step.get("default_branch"),
+                "branches": step.get("branches", [])
+            }
+                step_metadata.append(step_meta)
+            
+            survey_graph = SurveyGraph(steps, step_metadata)
             template_graph_cache[request.template_id + conversation_id] = survey_graph
             system_prompt = template["system_prompt"]
             max_turns = template["max_turns"]
@@ -53,7 +63,8 @@ async def chat_survey(request: ChatRequest):
                 "current_step_finish": False,
                 "current_step_messages": [],
                 "thread_id": conversation_id,
-                "end_message": template["end_message"]
+                "end_message": template["end_message"],
+                "step_metadata": step_metadata
             }
             async for data in process_survey_stream(survey_graph, initial_state, conversation_id):
                 yield data

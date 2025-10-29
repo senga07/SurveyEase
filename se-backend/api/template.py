@@ -20,6 +20,9 @@ template_graph_cache: Dict[str, SurveyGraph] = {}
 class SurveyStep(BaseModel):
     id: str
     content: str
+    type: str = "linear"  # "linear" | "condition"
+    default_branch: str = None  # 默认跳转的步骤ID
+    branches: List[Dict[str, str]] = []  # 条件分支
 
 
 class SurveyTemplate(BaseModel):
@@ -79,7 +82,16 @@ def save_templates(templates: List[SurveyTemplate]) -> bool:
                 "system_prompt": template.system_prompt,
                 "max_turns": template.max_turns,
                 "welcome_message": template.welcome_message,
-                "steps": [{"id": step.id, "content": step.content} for step in template.steps],
+                "steps": [
+                    {
+                        "id": step.id, 
+                        "content": step.content,
+                        "type": step.type,
+                        "default_branch": step.default_branch,
+                        "branches": step.branches
+                    } 
+                    for step in template.steps
+                ],
                 "end_message": template.end_message
             }
             templates_dict.append(template_dict)
@@ -110,7 +122,16 @@ def update_template_by_id(template_id: str, updated_template: SurveyTemplate) ->
                     "system_prompt": updated_template.system_prompt,
                     "max_turns": updated_template.max_turns,
                     "welcome_message": updated_template.welcome_message,
-                    "steps": [{"id": step.id, "content": step.content} for step in updated_template.steps],
+                    "steps": [
+                        {
+                            "id": step.id, 
+                            "content": step.content,
+                            "type": step.type,
+                            "default_branch": step.default_branch,
+                            "branches": step.branches
+                        } 
+                        for step in updated_template.steps
+                    ],
                     "end_message": updated_template.end_message
                 }
                 template_found = True

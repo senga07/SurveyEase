@@ -25,6 +25,15 @@ export interface StreamData {
 export interface SurveyStep {
   id: string;
   content: string;
+  type?: 'linear' | 'condition';
+  default_branch?: string;
+  branches?: SurveyBranch[];
+}
+
+export interface SurveyBranch {
+  id: string;
+  condition: string;
+  next_step: string;
 }
 
 export interface SurveyTemplate {
