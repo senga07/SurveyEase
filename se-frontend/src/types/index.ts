@@ -27,6 +27,11 @@ export interface SurveyStep {
   content: string;
 }
 
+export interface SurveyVariable {
+  key: string;
+  value: string;
+}
+
 export interface SurveyTemplate {
   id: string;
   theme: string;
@@ -35,4 +40,5 @@ export interface SurveyTemplate {
   welcome_message: string;
   steps: SurveyStep[];
   end_message: string;
+  variables?: SurveyVariable[];
 }

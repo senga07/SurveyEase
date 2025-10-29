@@ -8,7 +8,7 @@ from langchain_core.messages.system import SystemMessage
 from pydantic import BaseModel
 from langgraph.types import Command
 
-from api.template import load_template_by_id, template_graph_cache
+from api.template import load_template_by_id, template_graph_cache, apply_variable_substitution
 from graph.survey_graph import SurveyGraph
 from utils.unified_logger import get_logger
 
@@ -31,7 +31,8 @@ class ContinueRequest(BaseModel):
 @router.post("/chat/stream")
 async def chat_survey(request: ChatRequest):
     """与调研助手对话 - 使用astream_events实现流式响应"""
-    template = load_template_by_id(request.template_id)
+    raw_template = load_template_by_id(request.template_id)
+    template = apply_variable_substitution(raw_template)
     conversation_id = request.conversation_id
 
     async def generate_stream(template):
@@ -53,7 +54,8 @@ async def chat_survey(request: ChatRequest):
                 "current_step_finish": False,
                 "current_step_messages": [],
                 "thread_id": conversation_id,
-                "end_message": template["end_message"]
+                "end_message": template["end_message"],
+                "is_end": False,
             }
             async for data in process_survey_stream(survey_graph, initial_state, conversation_id):
                 yield data
