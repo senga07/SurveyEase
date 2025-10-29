@@ -276,6 +276,21 @@
   display: inline;
 }
 
+/* 系统变量高亮样式 (END, FINISH) */
+.system-variable-highlight {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  border: 1px solid #fca5a5;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9em;
+  display: inline;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /* 高亮输入框包装器 */
 .highlight-input-wrapper {
   position: relative;

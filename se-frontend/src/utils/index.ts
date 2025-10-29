@@ -22,19 +22,28 @@ export const createMessage = (
 });
 
 /**
- * 将文本中的变量占位符转换为高亮的HTML元素
- * @param text 包含变量占位符的文本
+ * 将文本中的变量占位符和系统字符串转换为高亮的HTML元素
+ * @param text 包含变量占位符和系统字符串的文本
  * @returns 包含高亮变量的HTML字符串
  */
 export const highlightVariables = (text: string): string => {
   if (!text) return '';
   
-  // 匹配 {{变量名}} 格式的占位符
-  const variablePattern = /\{\{([^}]+)\}\}/g;
+  let result = text;
   
-  return text.replace(variablePattern, (match, variableName) => {
+  // 先处理系统字符串 (END, FINISH) - 仅匹配大写
+  const systemStringPattern = /\b(END|FINISH)\b/g;
+  result = result.replace(systemStringPattern, (match) => {
+    return `<span class="system-variable-highlight">${match}</span>`;
+  });
+  
+  // 再处理 {{变量名}} 格式的占位符
+  const variablePattern = /\{\{([^}]+)\}\}/g;
+  result = result.replace(variablePattern, (_, variableName) => {
     return `<span class="variable-highlight">{{${variableName}}}</span>`;
   });
+  
+  return result;
 };
 
 /**
