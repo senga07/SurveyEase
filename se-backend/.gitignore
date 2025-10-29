@@ -10,3 +10,4 @@ wheels/
 .venv
 .env
 logs/*
+template/survey_template.json

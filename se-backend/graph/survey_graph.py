@@ -24,6 +24,7 @@ class SurveyGraphState(TypedDict):
     current_step: int
     current_step_finish: bool
     current_step_messages: List[BaseMessage]
+    is_end: bool
     thread_id: str
     end_message: str
 
@@ -68,6 +69,7 @@ class SurveyGraph():
                     {
                         "continue": str(i) + "_q",  # 继续当前步骤（多轮对话）
                         "next": str(i + 1) + "_q",  # 进入下一步骤
+                        "end": "end_survey"  # 进入结束节点
                     }
                 )
             else:
@@ -87,6 +89,9 @@ class SurveyGraph():
         current_step = state.get("current_step")
         current_step_finish = state.get("current_step_finish")
         steps = state.get("steps")
+
+        if state["is_end"]:
+            return "end"
 
         if current_step_finish:
             if current_step < len(steps):
@@ -110,9 +115,19 @@ class SurveyGraph():
             current_step_messages.append(step_message)
         response = self.fast_llm.invoke(messages)
         response_content = response.content if hasattr(response, 'content') else str(response)
-        is_end = "END" in response_content.upper() or len(current_step_messages) >= max_turns * 2 + 1
 
-        if is_end:
+        # 某个节点直接结束
+        if "END" in response_content.upper():
+            updated_state = {
+                **state,
+                "current_step_finish": True,
+                "current_step_messages": [],
+                "is_end": True,
+            }
+            return updated_state
+
+        is_finish = "FINISH" in response_content.upper() or len(current_step_messages) >= max_turns * 2 + 1
+        if is_finish:
             updated_state = {
                 **state,
                 "current_step_finish": True,
