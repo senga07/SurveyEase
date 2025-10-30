@@ -58,10 +58,12 @@ app.add_middleware(
 # 导入API路由
 from api.survey import router as survey_router
 from api.template import router as template_router
+from api.host import router as host_router
 
 # 注册路由
 app.include_router(survey_router, prefix="/api/survey", tags=["survey"])
 app.include_router(template_router, prefix="/api/template", tags=["template"])
+app.include_router(host_router, prefix="/api/host", tags=["host"])
 
 
 

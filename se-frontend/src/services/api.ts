@@ -1,8 +1,9 @@
-import { ChatRequest, StreamData, SurveyTemplate } from '../types';
+import { ChatRequest, StreamData, SurveyTemplate, Host } from '../types';
 
 export class ApiService {
   private static baseUrl = '/api/survey';
   private static templateUrl = '/api/template';
+  private static hostUrl = '/api/host';
 
   static async sendMessage(request: ChatRequest): Promise<ReadableStream<Uint8Array> | null> {
     try {
@@ -136,6 +137,67 @@ export class ApiService {
       return response.ok;
     } catch (error) {
       console.error('更新模板失败:', error);
+      return false;
+    }
+  }
+
+  // 主持人相关API
+  static async getHosts(): Promise<Host[]> {
+    try {
+      const response = await fetch(`${this.hostUrl}/hosts`);
+      if (response.ok) {
+        const data = await response.json();
+        return data;
+      } else {
+        console.error('获取主持人列表失败:', response.status, response.statusText);
+        return [];
+      }
+    } catch (error) {
+      console.error('获取主持人列表失败:', error);
+      return [];
+    }
+  }
+
+  static async createHost(host: Host): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.hostUrl}/hosts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(host)
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('创建主持人失败:', error);
+      return false;
+    }
+  }
+
+  static async updateHostById(hostId: string, host: Host): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.hostUrl}/hosts/${hostId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(host)
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('更新主持人失败:', error);
+      return false;
+    }
+  }
+
+  static async deleteHostById(hostId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.hostUrl}/hosts/${hostId}`, {
+        method: 'DELETE'
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('删除主持人失败:', error);
       return false;
     }
   }

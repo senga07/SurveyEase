@@ -11,3 +11,4 @@ wheels/
 .env
 logs/*
 template/survey_template.json
+template/host_config.json

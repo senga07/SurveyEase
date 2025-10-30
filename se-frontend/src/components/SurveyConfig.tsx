@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './SurveyConfig.css';
-import { SurveyStep, SurveyTemplate, SurveyVariable, SurveyBranch } from '../types';
+import { SurveyStep, SurveyTemplate, SurveyVariable, SurveyBranch, Host } from '../types';
 import { ApiService } from '../services/api';
 import { highlightVariables } from '../utils';
 
@@ -41,7 +41,7 @@ const HighlightInput: React.FC<HighlightInputProps> = ({
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
     if (isComposingRef.current) return;
-
+    
     // 获取纯文本内容，保持换行符
     const text = e.currentTarget.innerText || '';
     if (maxLength && text.length > maxLength) {
@@ -77,7 +77,7 @@ const HighlightInput: React.FC<HighlightInputProps> = ({
   // 只在值真正改变时才更新内容，避免光标跳动
   const updateContent = () => {
     if (!divRef.current) return;
-
+    
     const currentText = divRef.current.innerText || '';
     if (currentText !== value) {
       // 将换行符转换为HTML的<br>标签
@@ -131,12 +131,15 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
   ]);
   const [endMessage, setEndMessage] = useState('');
   const [variables, setVariables] = useState<SurveyVariable[]>([]);
+  const [hosts, setHosts] = useState<Host[]>([]);
+  const [selectedHostId, setSelectedHostId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(null);
 
   // 加载现有配置
   useEffect(() => {
     loadTemplate();
+    loadHosts();
   }, []);
 
   const loadTemplate = async () => {
@@ -152,6 +155,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         setSteps([{ id: '1', content: '' }]);
         setEndMessage('');
         setVariables([]);
+        setSelectedHostId('');
         return;
       }
       
@@ -176,9 +180,19 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         setSteps(template.steps || [{ id: '1', content: '' }]);
         setEndMessage(template.end_message || '');
         setVariables(template.variables || []);
+        setSelectedHostId(template.host_id || '');
       }
     } catch (error) {
       console.error('加载模板失败:', error);
+    }
+  };
+
+  const loadHosts = async () => {
+    try {
+      const hostsList = await ApiService.getHosts();
+      setHosts(hostsList);
+    } catch (error) {
+      console.error('加载主持人列表失败:', error);
     }
   };
 
@@ -272,7 +286,8 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         welcome_message: welcomeMessage,
         steps: steps,
         end_message: endMessage,
-        variables: variables
+        variables: variables,
+        host_id: selectedHostId || undefined
       };
 
       let success = false;
@@ -383,9 +398,28 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
               onChange={setSystemPrompt}
               placeholder="请输入系统提示，用于给调研员创建角色..."
               maxLength={500}
-              rows={10}
+              rows={4}
             />
             <CharCount current={systemPrompt.length} max={500} />
+          </div>
+          <div className="input-group">
+            <label>选择主持人</label>
+            <div className="input-hint">
+              选择主持人后，其角色信息将自动追加到系统提示中
+              </div>
+            <select
+              value={selectedHostId}
+              onChange={(e) => setSelectedHostId(e.target.value)}
+              className="host-select"
+            >
+              <option value="">请选择主持人</option>
+              {hosts.map((host) => (
+                <option key={host.id} value={host.id}>
+                  {host.name}
+                </option>
+              ))}
+            </select>
+
           </div>
           <div className="input-group">
             <label>背景知识 (最多500字符)</label>
@@ -401,6 +435,9 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
           </div>
           <div className="input-group">
             <label>最大轮数</label>
+            <div className="input-hint">
+              控制每个步骤最多可对话几轮
+            </div>
             <input
               type="number"
               value={maxTurns}
@@ -410,9 +447,6 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
               placeholder="每个步骤最多可对话几轮"
               className="max-turns-input"
             />
-            <div className="input-hint">
-              控制每个步骤最多可对话几轮
-            </div>
           </div>
         </div>
 
@@ -570,7 +604,6 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
             + 添加步骤
           </button>
         </div>
-
 
         {/* 结束语配置 */}
         <div className="config-section steps-section">

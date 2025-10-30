@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from langgraph.types import Command
 
 from api.template import load_template_by_id, template_graph_cache, apply_variable_substitution
+from api.host import load_host_by_id
 from graph.survey_graph import SurveyGraph
 from utils.unified_logger import get_logger
 
@@ -50,7 +51,8 @@ async def chat_survey(request: ChatRequest):
 
             survey_graph = SurveyGraph(steps, step_metadata)
             template_graph_cache[request.template_id + conversation_id] = survey_graph
-            system_prompt = template["system_prompt"]
+            system_prompt = await get_host_prompt(template)
+            system_prompt += "\n" + template["system_prompt"]
             background_knowledge = template.get("background_knowledge", "")
             if background_knowledge.strip():
                 system_prompt = f"{system_prompt}\n# 背景知识\n{background_knowledge}"
@@ -131,3 +133,15 @@ def return_response(func):
             "Content-Type": "text/event-stream"
         }
     )
+
+
+async def get_host_prompt(template):
+    host_id = template.get("host_id")
+    if host_id:
+        try:
+            host = load_host_by_id(host_id)
+            if host and host.get("role"):
+                return host['role']
+        except Exception as e:
+            raise ValueError(f"加载主持人配置失败: {str(e)}")
+    raise ValueError("加载主持人配置失败")

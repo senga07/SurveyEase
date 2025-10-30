@@ -51,4 +51,11 @@ export interface SurveyTemplate {
   steps: SurveyStep[];
   end_message: string;
   variables?: SurveyVariable[];
+  host_id?: string;
+}
+
+export interface Host {
+  id: string;
+  name: string;
+  role: string;
 }
