@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './SurveyConfig.css';
-import { SurveyStep, SurveyTemplate, SurveyVariable, SurveyBranch, Host } from '../types';
+import { SurveyStep, SurveyTemplate, SurveyVariable, Host } from '../types';
 import { ApiService } from '../services/api';
 import { highlightVariables } from '../utils';
 
@@ -238,34 +238,15 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
   };
 
 
-  const updateStepDefaultBranch = (id: string, default_branch: string) => {
+  const updateStepCondition = (id: string, condition: string) => {
     setSteps(steps.map(step =>
-      step.id === id ? { ...step, default_branch } : step
+      step.id === id ? { ...step, condition } : step
     ));
   };
 
-  const addBranch = (stepId: string) => {
+  const updateStepBranches = (id: string, branches: string[]) => {
     setSteps(steps.map(step =>
-      step.id === stepId
-        ? {
-            ...step,
-            branches: [...(step.branches || []), { id: '', condition: '', next_step: '' }]
-          }
-        : step
-    ));
-  };
-
-
-  const updateBranch = (stepId: string, branchIndex: number, field: keyof SurveyBranch, value: string) => {
-    setSteps(steps.map(step =>
-      step.id === stepId
-        ? {
-            ...step,
-            branches: step.branches?.map((branch, index) =>
-              index === branchIndex ? { ...branch, [field]: value } : branch
-            ) || []
-          }
-        : step
+      step.id === id ? { ...step, branches } : step
     ));
   };
 
@@ -533,37 +514,23 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                         <input
                           type="text"
                           className="condition-input"
-                          value={step.branches?.[0]?.condition || ''}
-                          onChange={(e) => {
-                            if (step.branches?.[0]) {
-                              updateBranch(step.id, 0, 'condition', e.target.value);
-                            } else {
-                              addBranch(step.id);
-                              setTimeout(() => {
-                                updateBranch(step.id, 0, 'condition', e.target.value);
-                              }, 100);
-                            }
-                          }}
-                          placeholder="例如：用户提到了元气森林"
+                          value={step.condition || ''}
+                          onChange={(e) => updateStepCondition(step.id, e.target.value)}
+                          placeholder="条件表达式"
                         />
                       </div>
                     </div>
 
                     <div className="rule-line jump-line">
                       <div className="jump-group">
-                        <span className="rule-text">跳转到</span>
+                        <span className="rule-text">是，跳转到</span>
                         <select
                           className="step-select"
-                          value={step.branches?.[0]?.next_step || ''}
+                          value={step.branches?.[0] || ''}
                           onChange={(e) => {
-                            if (step.branches?.[0]) {
-                              updateBranch(step.id, 0, 'next_step', e.target.value);
-                            } else {
-                              addBranch(step.id);
-                              setTimeout(() => {
-                                updateBranch(step.id, 0, 'next_step', e.target.value);
-                              }, 100);
-                            }
+                            const newBranches = [...(step.branches || ['', ''])];
+                            newBranches[0] = e.target.value;
+                            updateStepBranches(step.id, newBranches);
                           }}
                         >
                           <option value="">请选择步骤</option>
@@ -576,11 +543,15 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                       </div>
 
                       <div className="jump-group">
-                        <span className="rule-text">否则跳转到</span>
+                        <span className="rule-text">否，跳转到</span>
                         <select
                           className="step-select"
-                          value={step.default_branch || ''}
-                          onChange={(e) => updateStepDefaultBranch(step.id, e.target.value)}
+                          value={step.branches?.[1] || ''}
+                          onChange={(e) => {
+                            const newBranches = [...(step.branches || ['', ''])];
+                            newBranches[1] = e.target.value;
+                            updateStepBranches(step.id, newBranches);
+                          }}
                         >
                           <option value="">请选择步骤</option>
                           {steps.map((s, index) => (

@@ -22,8 +22,8 @@ class SurveyStep(BaseModel):
     id: str
     content: str
     type: str = "linear"  # "linear" | "condition"
-    default_branch: str = None  # 默认跳转的步骤ID
-    branches: List[Dict[str, str]] = []  # 条件分支
+    condition: str = ""  # 条件跳转的匹配条件
+    branches: List[str] = []  # 简化为字符串数组，[0]为是，[1]为否
 
 
 class SurveyVariable(BaseModel):
@@ -97,7 +97,7 @@ def save_templates(templates: List[SurveyTemplate]) -> bool:
                         "id": step.id,
                         "content": step.content,
                         "type": step.type,
-                        "default_branch": step.default_branch,
+                        "condition": step.condition,
                         "branches": step.branches
                     }
                     for step in template.steps
@@ -140,7 +140,7 @@ def update_template_by_id(template_id: str, updated_template: SurveyTemplate) ->
                             "id": step.id,
                             "content": step.content,
                             "type": step.type,
-                            "default_branch": step.default_branch,
+                            "condition": step.condition,
                             "branches": step.branches
                         }
                         for step in updated_template.steps

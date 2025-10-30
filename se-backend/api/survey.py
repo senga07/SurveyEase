@@ -51,7 +51,7 @@ async def chat_survey(request: ChatRequest):
 
             survey_graph = SurveyGraph(steps, step_metadata)
             template_graph_cache[request.template_id + conversation_id] = survey_graph
-            system_prompt = await get_host_prompt(template)
+            system_prompt = get_host_prompt(template)
             system_prompt += "\n" + template["system_prompt"]
             background_knowledge = template.get("background_knowledge", "")
             if background_knowledge.strip():
@@ -135,7 +135,7 @@ def return_response(func):
     )
 
 
-async def get_host_prompt(template):
+def get_host_prompt(template):
     host_id = template.get("host_id")
     if host_id:
         try:

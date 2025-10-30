@@ -126,25 +126,52 @@ class SurveyGraph():
         return self._get_next_sequential_step(current_step, step_metadata)
 
     def _evaluate_condition(self, step_meta: Dict[str, Any], state: SurveyGraphState) -> str:
-        """评估条件并返回下一步步骤ID"""
+        """使用AI模型评估条件并返回下一步步骤ID"""
+        condition = step_meta.get("condition", "")
         branches = step_meta.get("branches", [])
-        default_branch = step_meta.get("default_branch")
 
         # 获取用户最后一条消息
         messages = state.get("messages", [])
-        if not messages:
-            return default_branch
+        if not messages or len(branches) < 2:
+            return branches[1] if len(branches) > 1 else "end_survey"
 
         last_message = messages[-1]
         user_response = last_message.content if hasattr(last_message, 'content') else str(last_message)
 
-        # 评估条件
-        for branch in branches:
-            condition = branch.get("condition", "")
-            if condition and condition.lower() in user_response.lower():
-                return branch.get("next_step", default_branch)
+        if not condition:
+            return branches[1] if len(branches) > 1 else "end_survey"
 
-        return default_branch
+        # 使用AI模型判断条件是否满足
+        condition_prompt = f"""你是一个条件判断助手。请根据以下信息判断用户的回答是否满足条件：
+
+判断条件：{condition}
+用户回答：{user_response}
+
+请仔细分析用户回答的内容，判断是否满足上述条件。
+- 如果用户回答满足条件，回答"是"
+- 如果用户回答不满足条件，回答"否"
+- 只回答"是"或"否"，不要其他内容"""
+
+        try:
+            # 使用AI模型进行条件判断
+            response = self.fast_llm.invoke([HumanMessage(content=condition_prompt)])
+            result = response.content.strip().lower()
+            
+            # 判断AI的回答
+            if "是" in result or "yes" in result or "true" in result:
+                self.logger.info(f"条件判断：满足条件 '{condition}'，跳转到 {branches[0]}")
+                return branches[0]  # 满足条件
+            else:
+                self.logger.info(f"条件判断：不满足条件 '{condition}'，跳转到 {branches[1]}")
+                return branches[1]  # 不满足条件
+                
+        except Exception as e:
+            # 如果AI判断失败，回退到简单字符串匹配
+            self.logger.warning(f"AI条件判断失败，回退到字符串匹配: {str(e)}")
+            if condition.lower() in user_response.lower():
+                return branches[0]
+            else:
+                return branches[1]
 
     def _find_step_by_id(self, step_id: str, step_metadata: List[Dict[str, Any]]) -> str:
         """根据步骤ID查找对应的节点"""

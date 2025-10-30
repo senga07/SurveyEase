@@ -26,14 +26,8 @@ export interface SurveyStep {
   id: string;
   content: string;
   type?: 'linear' | 'condition';
-  default_branch?: string;
-  branches?: SurveyBranch[];
-}
-
-export interface SurveyBranch {
-  id: string;
-  condition: string;
-  next_step: string;
+  condition?: string;  // 条件跳转的匹配条件
+  branches?: string[]; // 简化为字符串数组，[0]为是，[1]为否
 }
 
 export interface SurveyVariable {
