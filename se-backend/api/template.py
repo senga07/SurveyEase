@@ -38,6 +38,7 @@ class SurveyTemplate(BaseModel):
     steps: List[SurveyStep]
     end_message: str
     variables: List[SurveyVariable] = []
+    host_id: str = ""
 
 
 def load_templates() -> List[Dict[str, Any]]:
@@ -90,7 +91,8 @@ def save_templates(templates: List[SurveyTemplate]) -> bool:
                 "welcome_message": template.welcome_message,
                 "steps": [{"id": step.id, "content": step.content} for step in template.steps],
                 "end_message": template.end_message,
-                "variables": [{"key": var.key, "value": var.value} for var in template.variables]
+                "variables": [{"key": var.key, "value": var.value} for var in template.variables],
+                "host_id": template.host_id
             }
             templates_dict.append(template_dict)
 
@@ -123,7 +125,8 @@ def update_template_by_id(template_id: str, updated_template: SurveyTemplate) ->
                     "welcome_message": updated_template.welcome_message,
                     "steps": [{"id": step.id, "content": step.content} for step in updated_template.steps],
                     "end_message": updated_template.end_message,
-                    "variables": [{"key": var.key, "value": var.value} for var in updated_template.variables]
+                    "variables": [{"key": var.key, "value": var.value} for var in updated_template.variables],
+                    "host_id": updated_template.host_id
                 }
                 template_found = True
                 break
@@ -206,6 +209,20 @@ def clear_template_cache(template_id: str = None):
         template_graph_cache.clear()
 
 
+def validate_host_id(host_id: str) -> bool:
+    """验证主持人ID是否有效"""
+    if not host_id or host_id.strip() == "":
+        return True  # 空的主持人ID是允许的（可选字段）
+    
+    try:
+        # 尝试导入主持人模块并验证ID
+        from api.host import load_host_by_id
+        load_host_by_id(host_id)
+        return True
+    except Exception:
+        return False
+
+
 @router.get("/templates")
 async def get_templates():
     """获取调研模板列表（用于配置页面，不进行变量替换）"""
@@ -260,6 +277,11 @@ async def create_template(template: SurveyTemplate):
             if not step.content.strip():
                 raise HTTPException(status_code=400, detail="所有步骤内容不能为空")
 
+        # 验证主持人ID（如果提供）
+        if template.host_id and template.host_id.strip():
+            if not validate_host_id(template.host_id):
+                raise HTTPException(status_code=400, detail="指定的主持人不存在")
+
         # 生成新的模板ID
         template.id = str(uuid.uuid4())
 
@@ -308,6 +330,11 @@ async def update_by_id(template_id: str, template: SurveyTemplate):
         for step in template.steps:
             if not step.content.strip():
                 raise HTTPException(status_code=400, detail="所有步骤内容不能为空")
+
+        # 验证主持人ID（如果提供）
+        if template.host_id and template.host_id.strip():
+            if not validate_host_id(template.host_id):
+                raise HTTPException(status_code=400, detail="指定的主持人不存在")
 
         # 确保模板ID匹配
         if template.id != template_id:

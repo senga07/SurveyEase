@@ -111,6 +111,25 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+.host-config-button {
+  background: #f7fafc;
+  color: #6b46c1;
+  border: 1px solid #c4b5fd;
+  padding: 0.875rem 2rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.host-config-button:hover {
+  background: #ede9fe;
+  border-color: #a78bfa;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 /* 主题选择相关样式 */
 .template-selection {
   width: 100%;

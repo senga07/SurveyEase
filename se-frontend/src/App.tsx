@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import ChatWindow from './components/ChatWindow';
 import SurveyConfig from './components/SurveyConfig';
+import HostConfig from './components/HostConfig';
 import { useSurvey } from './hooks/useSurvey';
 import { SurveyTemplate } from './types';
 import { ApiService } from './services/api';
@@ -17,6 +18,7 @@ function App() {
   } = useSurvey();
 
   const [showConfig, setShowConfig] = useState(false);
+  const [showHostConfig, setShowHostConfig] = useState(false);
   const [templates, setTemplates] = useState<SurveyTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<SurveyTemplate | null>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
@@ -65,6 +67,14 @@ function App() {
     setShowConfig(false);
   };
 
+  const handleHostConfigClick = () => {
+    setShowHostConfig(true);
+  };
+
+  const handleBackFromHostConfig = () => {
+    setShowHostConfig(false);
+  };
+
   return (
     <div className="App">
       <header className="App-header">
@@ -73,7 +83,11 @@ function App() {
       </header>
       
       <main className="App-main">
-        {showConfig ? (
+        {showHostConfig ? (
+          <HostConfig 
+            onBack={handleBackFromHostConfig}
+          />
+        ) : showConfig ? (
           <SurveyConfig 
             templateId={configTemplateId}
             onBack={() => setShowConfig(false)}
@@ -134,6 +148,12 @@ function App() {
                     className="config-button"
                   >
                     调研配置
+                  </button>
+                  <button 
+                    onClick={handleHostConfigClick}
+                    className="host-config-button"
+                  >
+                    主持人配置
                   </button>
                 </div>
               </div>

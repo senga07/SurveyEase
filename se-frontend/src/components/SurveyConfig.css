@@ -107,8 +107,41 @@
   transition: border-color 0.2s ease;
 }
 
+.input-group input:hover {
+  border-color: #cbd5e0;
+}
+
 .input-group input.max-turns-input {
   width: 30%;
+}
+
+.host-select {
+  width: 30%;
+  padding: 0.875rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background-color: white;
+  transition: border-color 0.2s ease;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.host-select:hover {
+  border-color: #cbd5e0;
+}
+
+.host-select:focus {
+  outline: none;
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+.host-select option {
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  font-family: inherit;
 }
 
 .input-group input:focus {
@@ -121,6 +154,7 @@
   color: #718096;
   font-size: 0.75rem;
   margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
 }
 
 .char-count {
@@ -316,6 +350,10 @@
   min-height: 2.5em;
 }
 
+.highlight-editable:hover {
+  border-color: #cbd5e0;
+}
+
 .highlight-editable:focus {
   border-color: #4299e1;
   box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
@@ -352,6 +390,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  margin-left:2rem
 }
 
 .save-button:hover:not(:disabled) {
