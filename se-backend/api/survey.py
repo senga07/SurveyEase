@@ -41,6 +41,10 @@ async def chat_survey(request: ChatRequest):
             survey_graph = SurveyGraph(steps)
             template_graph_cache[request.template_id + conversation_id] = survey_graph
             system_prompt = template["system_prompt"]
+            background_knowledge = template.get("background_knowledge", "")
+            if background_knowledge.strip():
+                system_prompt = f"{system_prompt}\n# 背景知识\n{background_knowledge}"
+            
             max_turns = template["max_turns"]
             msg_list = [SystemMessage(content=system_prompt),
                         AIMessage(content=template["welcome_message"]),

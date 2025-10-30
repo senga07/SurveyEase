@@ -16,6 +16,7 @@ class SurveyGraphState(TypedDict):
     messages: List[BaseMessage]
     steps: List[str]
     system_prompt: str
+    background_knowledge: str
     max_turns: int
     current_step: int
     current_step_finish: bool

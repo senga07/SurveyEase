@@ -32,6 +32,7 @@ class SurveyTemplate(BaseModel):
     id: str
     theme: str
     system_prompt: str
+    background_knowledge: str = ""
     max_turns: int
     welcome_message: str
     steps: List[SurveyStep]
@@ -84,6 +85,7 @@ def save_templates(templates: List[SurveyTemplate]) -> bool:
                 "id": template.id,
                 "theme": template.theme,
                 "system_prompt": template.system_prompt,
+                "background_knowledge": template.background_knowledge,
                 "max_turns": template.max_turns,
                 "welcome_message": template.welcome_message,
                 "steps": [{"id": step.id, "content": step.content} for step in template.steps],
@@ -116,6 +118,7 @@ def update_template_by_id(template_id: str, updated_template: SurveyTemplate) ->
                     "id": updated_template.id,
                     "theme": updated_template.theme,
                     "system_prompt": updated_template.system_prompt,
+                    "background_knowledge": updated_template.background_knowledge,
                     "max_turns": updated_template.max_turns,
                     "welcome_message": updated_template.welcome_message,
                     "steps": [{"id": step.id, "content": step.content} for step in updated_template.steps],
@@ -172,6 +175,10 @@ def apply_variable_substitution(template: Dict[str, Any]) -> Dict[str, Any]:
     # 替换系统提示
     if 'system_prompt' in updated_template:
         updated_template['system_prompt'] = replace_variables(updated_template['system_prompt'], var_objects)
+    
+    # 替换背景知识
+    if 'background_knowledge' in updated_template:
+        updated_template['background_knowledge'] = replace_variables(updated_template['background_knowledge'], var_objects)
     
     # 替换开场白
     if 'welcome_message' in updated_template:

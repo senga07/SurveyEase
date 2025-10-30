@@ -68,6 +68,7 @@
 
 .config-section.variables-section {
   grid-column: 1 / -1;
+  margin-bottom: 2rem;
 }
 
 .config-section h3 {

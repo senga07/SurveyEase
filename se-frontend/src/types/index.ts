@@ -36,6 +36,7 @@ export interface SurveyTemplate {
   id: string;
   theme: string;
   system_prompt: string;
+  background_knowledge?: string;
   max_turns: number;
   welcome_message: string;
   steps: SurveyStep[];

@@ -123,6 +123,7 @@ interface SurveyConfigProps {
 const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTemplateSaved }) => {
   const [theme, setTheme] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [backgroundKnowledge, setBackgroundKnowledge] = useState('');
   const [maxTurns, setMaxTurns] = useState(5);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [steps, setSteps] = useState<SurveyStep[]>([
@@ -145,6 +146,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         setCurrentTemplateId(null);
         setTheme('');
         setSystemPrompt('');
+        setBackgroundKnowledge('');
         setMaxTurns(5);
         setWelcomeMessage('');
         setSteps([{ id: '1', content: '' }]);
@@ -168,6 +170,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         setCurrentTemplateId(template.id);
         setTheme(template.theme || '');
         setSystemPrompt(template.system_prompt || '');
+        setBackgroundKnowledge(template.background_knowledge || '');
         setMaxTurns(template.max_turns || 5);
         setWelcomeMessage(template.welcome_message || '');
         setSteps(template.steps || [{ id: '1', content: '' }]);
@@ -224,6 +227,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         id: templateId,
         theme: theme,
         system_prompt: systemPrompt,
+        background_knowledge: backgroundKnowledge,
         max_turns: maxTurns,
         welcome_message: welcomeMessage,
         steps: steps,
@@ -342,6 +346,18 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
               rows={10}
             />
             <CharCount current={systemPrompt.length} max={500} />
+          </div>
+          <div className="input-group">
+            <label>背景知识 (最多500字符)</label>
+            <HighlightInput
+              type="textarea"
+              value={backgroundKnowledge}
+              onChange={setBackgroundKnowledge}
+              placeholder="请输入背景知识，将自动拼接到系统提示后面..."
+              maxLength={500}
+              rows={4}
+            />
+            <CharCount current={backgroundKnowledge.length} max={500} />
           </div>
           <div className="input-group">
             <label>最大轮数</label>
