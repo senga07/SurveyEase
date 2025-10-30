@@ -1,18 +1,14 @@
-from typing import List, AsyncIterator
-
-from langchain_core.runnables import RunnableConfig
-from typing import List, TypedDict, AsyncIterator
+from typing import List, TypedDict
 from langchain_core.messages.base import BaseMessage
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
-from langmem import create_manage_memory_tool, create_search_memory_tool
 from langgraph.types import interrupt
-from typing import Dict, Any
 from services.service_manager import service_manager
 from utils.custom_serializer import CustomSerializer
 from utils.unified_logger import get_logger
+from utils.chat_logger import ChatLogger
 from langchain_core.messages.ai import AIMessage
 
 
@@ -39,6 +35,14 @@ class SurveyGraph():
         self.store = service_manager.store
         self.steps = steps
         self.checkpointer = MemorySaver(serde=CustomSerializer())
+        
+        # 初始化聊天记录保存器
+        if self.config:
+            chat_log_path = getattr(self.config, 'chat_log_path', 'logs/chat_logs')
+        else:
+            chat_log_path = 'logs/chat_logs'
+        self.chat_logger = ChatLogger(chat_log_path)
+        
         self.graph = self._build_graph()
 
         self.logger.info(f"SurveyGraph 实例创建完成，包含 {len(steps)} 个步骤")
@@ -163,12 +167,24 @@ class SurveyGraph():
         return updated_state
 
     def _end_survey(self, state: SurveyGraphState):
-        """结束调研节点 - 输出配置的结束语"""
+        """结束调研节点 - 输出配置的结束语并保存聊天记录"""
         end_message = state.get("end_message")
         end_ai_message = AIMessage(content=end_message)
+        
+        # 添加结束消息到消息列表
+        messages = state["messages"] + [end_ai_message]
+        conversation_id = state.get("thread_id")
+        
+        # 保存聊天记录
+        try:
+            saved_path = self.chat_logger.save_chat_log(messages, conversation_id)
+            self.logger.info(f"调研会话结束，聊天记录已保存到: {saved_path}")
+        except Exception as e:
+            self.logger.error(f"保存聊天记录失败: {str(e)}")
+        
         updated_state = {
             **state,
-            "messages": state["messages"] + [end_ai_message],
+            "messages": messages,
             "current_step_finish": True,
         }
         return updated_state
