@@ -19,6 +19,9 @@ class Settings(BaseSettings):
 
     embedding: str
     
+    # 聊天记录保存配置
+    chat_log_path: str = "logs/chat_logs"
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

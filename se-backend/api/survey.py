@@ -8,7 +8,7 @@ from langchain_core.messages.system import SystemMessage
 from pydantic import BaseModel
 from langgraph.types import Command
 
-from api.template import load_template_by_id, template_graph_cache
+from api.template import load_template_by_id, template_graph_cache, apply_variable_substitution
 from graph.survey_graph import SurveyGraph
 from utils.unified_logger import get_logger
 
@@ -31,7 +31,8 @@ class ContinueRequest(BaseModel):
 @router.post("/chat/stream")
 async def chat_survey(request: ChatRequest):
     """与调研助手对话 - 使用astream_events实现流式响应"""
-    template = load_template_by_id(request.template_id)
+    raw_template = load_template_by_id(request.template_id)
+    template = apply_variable_substitution(raw_template)
     conversation_id = request.conversation_id
 
     async def generate_stream(template):
@@ -39,17 +40,21 @@ async def chat_survey(request: ChatRequest):
             steps = [step["content"] for step in template["steps"]]
             step_metadata = []
             for step in template["steps"]:
-            step_meta = {
-                "id": step.get("id", ""),
-                "type": step.get("type", "linear"),
-                "default_branch": step.get("default_branch"),
-                "branches": step.get("branches", [])
-            }
+                step_meta = {
+                    "id": step.get("id", ""),
+                    "type": step.get("type", "linear"),
+                    "default_branch": step.get("default_branch"),
+                    "branches": step.get("branches", [])
+                }
                 step_metadata.append(step_meta)
-            
+
             survey_graph = SurveyGraph(steps, step_metadata)
             template_graph_cache[request.template_id + conversation_id] = survey_graph
             system_prompt = template["system_prompt"]
+            background_knowledge = template.get("background_knowledge", "")
+            if background_knowledge.strip():
+                system_prompt = f"{system_prompt}\n# 背景知识\n{background_knowledge}"
+
             max_turns = template["max_turns"]
             msg_list = [SystemMessage(content=system_prompt),
                         AIMessage(content=template["welcome_message"]),
@@ -64,6 +69,7 @@ async def chat_survey(request: ChatRequest):
                 "current_step_messages": [],
                 "thread_id": conversation_id,
                 "end_message": template["end_message"],
+                "is_end": False,
                 "step_metadata": step_metadata
             }
             async for data in process_survey_stream(survey_graph, initial_state, conversation_id):

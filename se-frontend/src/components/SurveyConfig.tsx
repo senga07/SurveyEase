@@ -1,7 +1,118 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './SurveyConfig.css';
-import { SurveyStep, SurveyTemplate, SurveyBranch } from '../types';
+import { SurveyStep, SurveyTemplate, SurveyVariable, SurveyBranch } from '../types';
 import { ApiService } from '../services/api';
+import { highlightVariables } from '../utils';
+
+// 字符计数组件
+interface CharCountProps {
+  current: number;
+  max: number;
+}
+
+const CharCount: React.FC<CharCountProps> = ({ current, max }) => (
+  <div className="char-count">
+    {current}/{max}
+  </div>
+);
+
+// 高亮输入框组件
+interface HighlightInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  maxLength?: number;
+  type?: 'input' | 'textarea';
+  rows?: number;
+  className?: string;
+}
+
+const HighlightInput: React.FC<HighlightInputProps> = ({
+  value,
+  onChange,
+  placeholder,
+  maxLength,
+  type = 'input',
+  rows = 10,
+  className = ''
+}) => {
+  const divRef = useRef<HTMLDivElement>(null);
+  const isComposingRef = useRef(false);
+
+  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    if (isComposingRef.current) return;
+
+    // 获取纯文本内容，保持换行符
+    const text = e.currentTarget.innerText || '';
+    if (maxLength && text.length > maxLength) {
+      return;
+    }
+    onChange(text);
+  };
+
+  const handleCompositionStart = () => {
+    isComposingRef.current = true;
+  };
+
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLDivElement>) => {
+    isComposingRef.current = false;
+    const text = e.currentTarget.innerText || '';
+    if (maxLength && text.length > maxLength) {
+      return;
+    }
+    onChange(text);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // 处理回车键
+    if (e.key === 'Enter' && type === 'input') {
+      e.preventDefault();
+    }
+    // 对于textarea类型，允许回车键创建换行
+    if (e.key === 'Enter' && type === 'textarea') {
+      // 让浏览器自然处理换行
+    }
+  };
+
+  // 只在值真正改变时才更新内容，避免光标跳动
+  const updateContent = () => {
+    if (!divRef.current) return;
+
+    const currentText = divRef.current.innerText || '';
+    if (currentText !== value) {
+      // 将换行符转换为HTML的<br>标签
+      const textWithBreaks = value ? value.replace(/\n/g, '<br>') : '';
+      const highlightedText = textWithBreaks ? highlightVariables(textWithBreaks) : '';
+      divRef.current.innerHTML = highlightedText || '';
+    }
+  };
+
+  // 使用 useEffect 来更新内容，避免在输入过程中重新渲染
+  React.useEffect(() => {
+    updateContent();
+  }, [value]);
+
+  return (
+    <div className={`highlight-input-wrapper ${className}`}>
+      <div
+        ref={divRef}
+        className={`highlight-editable ${type === 'textarea' ? 'highlight-textarea' : ''}`}
+        contentEditable
+        onInput={handleInput}
+        onCompositionStart={handleCompositionStart}
+        onCompositionEnd={handleCompositionEnd}
+        onKeyDown={handleKeyDown}
+        data-placeholder={placeholder}
+        suppressContentEditableWarning={true}
+        style={{
+          minHeight: type === 'textarea' ? `${rows * 1.5}em` : 'auto',
+          maxHeight: type === 'textarea' ? '200px' : 'none',
+          overflowY: type === 'textarea' ? 'auto' : 'visible'
+        }}
+      />
+    </div>
+  );
+};
 
 interface SurveyConfigProps {
   templateId?: string;
@@ -12,12 +123,14 @@ interface SurveyConfigProps {
 const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTemplateSaved }) => {
   const [theme, setTheme] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [backgroundKnowledge, setBackgroundKnowledge] = useState('');
   const [maxTurns, setMaxTurns] = useState(5);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [steps, setSteps] = useState<SurveyStep[]>([
     { id: '1', content: '' }
   ]);
   const [endMessage, setEndMessage] = useState('');
+  const [variables, setVariables] = useState<SurveyVariable[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(null);
 
@@ -33,10 +146,12 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         setCurrentTemplateId(null);
         setTheme('');
         setSystemPrompt('');
+        setBackgroundKnowledge('');
         setMaxTurns(5);
         setWelcomeMessage('');
         setSteps([{ id: '1', content: '' }]);
         setEndMessage('');
+        setVariables([]);
         return;
       }
       
@@ -55,10 +170,12 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         setCurrentTemplateId(template.id);
         setTheme(template.theme || '');
         setSystemPrompt(template.system_prompt || '');
+        setBackgroundKnowledge(template.background_knowledge || '');
         setMaxTurns(template.max_turns || 5);
         setWelcomeMessage(template.welcome_message || '');
         setSteps(template.steps || [{ id: '1', content: '' }]);
         setEndMessage(template.end_message || '');
+        setVariables(template.variables || []);
       }
     } catch (error) {
       console.error('加载模板失败:', error);
@@ -82,40 +199,58 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
     ));
   };
 
+  const addVariable = () => {
+    const newVariable: SurveyVariable = {
+      key: '',
+      value: ''
+    };
+    setVariables([...variables, newVariable]);
+  };
+
+  const removeVariable = (index: number) => {
+    setVariables(variables.filter((_, i) => i !== index));
+  };
+
+  const updateVariable = (index: number, field: keyof SurveyVariable, value: string) => {
+    const updatedVariables = [...variables];
+    updatedVariables[index] = { ...updatedVariables[index], [field]: value };
+    setVariables(updatedVariables);
+  };
+
   const updateStepType = (id: string, type: 'linear' | 'condition') => {
-    setSteps(steps.map(step => 
+    setSteps(steps.map(step =>
       step.id === id ? { ...step, type } : step
     ));
   };
 
 
   const updateStepDefaultBranch = (id: string, default_branch: string) => {
-    setSteps(steps.map(step => 
+    setSteps(steps.map(step =>
       step.id === id ? { ...step, default_branch } : step
     ));
   };
 
   const addBranch = (stepId: string) => {
-    setSteps(steps.map(step => 
-      step.id === stepId 
-        ? { 
-            ...step, 
+    setSteps(steps.map(step =>
+      step.id === stepId
+        ? {
+            ...step,
             branches: [...(step.branches || []), { id: '', condition: '', next_step: '' }]
-          } 
+          }
         : step
     ));
   };
 
 
   const updateBranch = (stepId: string, branchIndex: number, field: keyof SurveyBranch, value: string) => {
-    setSteps(steps.map(step => 
-      step.id === stepId 
-        ? { 
-            ...step, 
-            branches: step.branches?.map((branch, index) => 
+    setSteps(steps.map(step =>
+      step.id === stepId
+        ? {
+            ...step,
+            branches: step.branches?.map((branch, index) =>
               index === branchIndex ? { ...branch, [field]: value } : branch
             ) || []
-          } 
+          }
         : step
     ));
   };
@@ -132,10 +267,12 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         id: templateId,
         theme: theme,
         system_prompt: systemPrompt,
+        background_knowledge: backgroundKnowledge,
         max_turns: maxTurns,
         welcome_message: welcomeMessage,
         steps: steps,
-        end_message: endMessage
+        end_message: endMessage,
+        variables: variables
       };
 
       let success = false;
@@ -171,35 +308,96 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         <p>{currentTemplateId ? '修改调研的开场白、步骤和结束语' : '配置新的调研模板'}</p>
       </div>
 
+      {/* 变量配置 */}
+        <div className="config-section variables-section">
+          <h3>变量配置</h3>
+          <p className="section-description">
+            定义变量后，可以在主题、系统提示和步骤内容中使用 {`{{变量key}}`} 的格式进行引用
+          </p>
+          {variables.map((variable, index) => (
+            <div key={index} className="variable-item">
+              <div className="variable-header">
+                <span className="variable-number">变量 {index + 1}</span>
+                <button
+                  type="button"
+                  className="remove-variable"
+                  onClick={() => removeVariable(index)}
+                >
+                  删除
+                </button>
+              </div>
+              <div className="variable-fields">
+                <div className="input-group">
+                  <label>变量Key (用于引用)</label>
+                  <input
+                    type="text"
+                    value={variable.key}
+                    onChange={(e) => updateVariable(index, 'key', e.target.value)}
+                    placeholder="例如: product_name"
+                    maxLength={50}
+                  />
+                </div>
+                <div className="input-group">
+                  <label>变量值</label>
+                  <input
+                    type="text"
+                    value={variable.value}
+                    onChange={(e) => updateVariable(index, 'value', e.target.value)}
+                    placeholder="例如: 元气森林"
+                    maxLength={100}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="add-variable"
+            onClick={addVariable}
+          >
+            + 添加变量
+          </button>
+        </div>
+
+
       <div className="config-content">
         {/* 基本信息配置 */}
         <div className="config-section basic-info-section">
           <h3>基本信息</h3>
-          <div className="input-group">
-            <label>调研主题 (最多50字符)</label>
-            <input
-              type="text"
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              placeholder="请输入调研主题..."
-              maxLength={50}
-            />
-            <div className="char-count">
-              {theme.length}/50
-            </div>
-          </div>
+           <div className="input-group">
+             <label>调研主题 (最多50字符)</label>
+             <HighlightInput
+               type="input"
+               value={theme}
+               onChange={setTheme}
+               placeholder="请输入调研主题..."
+               maxLength={50}
+             />
+             <CharCount current={theme.length} max={50} />
+           </div>
           <div className="input-group">
             <label>系统提示 (最多500字符)</label>
-            <textarea
+            <HighlightInput
+              type="textarea"
               value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
+              onChange={setSystemPrompt}
               placeholder="请输入系统提示，用于给调研员创建角色..."
+              maxLength={500}
+              rows={10}
+            />
+            <CharCount current={systemPrompt.length} max={500} />
+          </div>
+          <div className="input-group">
+            <label>背景知识 (最多500字符)</label>
+            <HighlightInput
+              type="textarea"
+              value={backgroundKnowledge}
+              onChange={setBackgroundKnowledge}
+              placeholder="请输入背景知识，将自动拼接到系统提示后面..."
               maxLength={500}
               rows={4}
             />
-            <div className="char-count">
-              {systemPrompt.length}/500
-            </div>
+            <CharCount current={backgroundKnowledge.length} max={500} />
           </div>
           <div className="input-group">
             <label>最大轮数</label>
@@ -210,6 +408,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
               min="1"
               max="20"
               placeholder="每个步骤最多可对话几轮"
+              className="max-turns-input"
             />
             <div className="input-hint">
               控制每个步骤最多可对话几轮
@@ -217,23 +416,23 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
           </div>
         </div>
 
-        {/* 开场白配置 */}
-        <div className="config-section steps-section">
-          <h3>开场白配置</h3>
-          <div className="input-group">
-            <label>开场白内容 (最多100字符)</label>
-            <textarea
-              value={welcomeMessage}
-              onChange={(e) => setWelcomeMessage(e.target.value)}
-              placeholder="请输入调研开场白..."
-              maxLength={100}
-              rows={3}
-            />
-            <div className="char-count">
-              {welcomeMessage.length}/100
-            </div>
-          </div>
-        </div>
+
+         {/* 开场白配置 */}
+         <div className="config-section steps-section">
+           <h3>开场白配置</h3>
+           <div className="input-group">
+             <label>开场白内容 (最多50字符)</label>
+             <HighlightInput
+               type="textarea"
+               value={welcomeMessage}
+               onChange={setWelcomeMessage}
+               placeholder="请输入调研开场白..."
+               maxLength={50}
+               rows={1}
+             />
+             <CharCount current={welcomeMessage.length} max={50} />
+           </div>
+         </div>
 
         {/* 步骤配置 */}
         <div className="config-section steps-section">
@@ -276,16 +475,15 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
               </div>
               <div className="input-group">
                 <label>步骤内容 (最多500字符)</label>
-                <textarea
+                <HighlightInput
+                  type="textarea"
                   value={step.content}
-                  onChange={(e) => updateStep(step.id, e.target.value)}
+                  onChange={(value) => updateStep(step.id, value)}
                   placeholder="请输入调研步骤内容..."
                   maxLength={500}
-                  rows={5}
+                  rows={10}
                 />
-                <div className="char-count">
-                  {step.content.length}/500
-                </div>
+                <CharCount current={step.content.length} max={500} />
               </div>
 
 
@@ -293,7 +491,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
               {step.type === 'condition' && (
                 <div className="condition-config">
                   <h4>跳转规则</h4>
-                  
+
                   <div className="jump-rule-display">
                     <div className="rule-line condition-line">
                       <div className="condition-group">
@@ -316,7 +514,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                         />
                       </div>
                     </div>
-                    
+
                     <div className="rule-line jump-line">
                       <div className="jump-group">
                         <span className="rule-text">跳转到</span>
@@ -342,7 +540,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                           ))}
                         </select>
                       </div>
-                      
+
                       <div className="jump-group">
                         <span className="rule-text">否则跳转到</span>
                         <select
@@ -378,17 +576,16 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         <div className="config-section steps-section">
           <h3>结束语配置</h3>
           <div className="input-group">
-            <label>结束语内容 (最多100字符)</label>
-            <textarea
+            <label>结束语内容 (最多50字符)</label>
+            <HighlightInput
+              type="textarea"
               value={endMessage}
-              onChange={(e) => setEndMessage(e.target.value)}
+              onChange={setEndMessage}
               placeholder="请输入调研结束语..."
-              maxLength={100}
-              rows={3}
+              maxLength={50}
+              rows={1}
             />
-            <div className="char-count">
-              {endMessage.length}/100
-            </div>
+            <CharCount current={endMessage.length} max={50} />
           </div>
         </div>
       </div>

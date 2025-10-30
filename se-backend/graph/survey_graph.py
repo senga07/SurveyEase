@@ -1,18 +1,15 @@
-from typing import List, AsyncIterator
-
-from langchain_core.runnables import RunnableConfig
-from typing import List, TypedDict, AsyncIterator
+from typing import List, TypedDict
 from langchain_core.messages.base import BaseMessage
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
-from langmem import create_manage_memory_tool, create_search_memory_tool
 from langgraph.types import interrupt
-from typing import Dict, Any
 from services.service_manager import service_manager
 from utils.custom_serializer import CustomSerializer
+from typing import Dict, Any
 from utils.unified_logger import get_logger
+from utils.chat_logger import ChatLogger
 from langchain_core.messages.ai import AIMessage
 
 
@@ -20,10 +17,12 @@ class SurveyGraphState(TypedDict):
     messages: List[BaseMessage]
     steps: List[str]
     system_prompt: str
+    background_knowledge: str
     max_turns: int
     current_step: int
     current_step_finish: bool
     current_step_messages: List[BaseMessage]
+    is_end: bool
     thread_id: str
     end_message: str
     step_metadata: List[Dict[str, Any]]  # 步骤元数据
@@ -40,6 +39,14 @@ class SurveyGraph():
         self.steps = steps
         self.step_metadata = step_metadata or []
         self.checkpointer = MemorySaver(serde=CustomSerializer())
+
+        # 初始化聊天记录保存器
+        if self.config:
+            chat_log_path = getattr(self.config, 'chat_log_path', 'logs/chat_logs')
+        else:
+            chat_log_path = 'logs/chat_logs'
+        self.chat_logger = ChatLogger(chat_log_path)
+
         self.graph = self._build_graph()
 
         self.logger.info(f"SurveyGraph 实例创建完成，包含 {len(steps)} 个步骤")
@@ -70,6 +77,7 @@ class SurveyGraph():
                     {
                         "continue": str(i) + "_q",  # 继续当前步骤（多轮对话）
                         "next": self._get_next_step,  # 根据路径决定下一步
+                        "end": "end_survey"  # 进入结束节点
                     }
                 )
             else:
@@ -90,6 +98,9 @@ class SurveyGraph():
         current_step_finish = state.get("current_step_finish")
         steps = state.get("steps")
 
+        if state["is_end"]:
+            return "end"
+
         if current_step_finish:
             if current_step < len(steps):
                 return "next"
@@ -102,15 +113,15 @@ class SurveyGraph():
         """根据条件跳转决定下一步"""
         current_step = state.get("current_step")
         step_metadata = state.get("step_metadata", [])
-        
+
         # 获取当前步骤的元数据
         current_step_meta = step_metadata[current_step] if current_step < len(step_metadata) else {}
-        
+
         # 如果是条件节点，根据条件选择下一步
         if current_step_meta.get("type") == "condition":
             next_step_id = self._evaluate_condition(current_step_meta, state)
             return self._find_step_by_id(next_step_id, step_metadata)
-        
+
         # 如果是普通节点，按顺序执行下一步
         return self._get_next_sequential_step(current_step, step_metadata)
 
@@ -118,21 +129,21 @@ class SurveyGraph():
         """评估条件并返回下一步步骤ID"""
         branches = step_meta.get("branches", [])
         default_branch = step_meta.get("default_branch")
-        
+
         # 获取用户最后一条消息
         messages = state.get("messages", [])
         if not messages:
             return default_branch
-            
+
         last_message = messages[-1]
         user_response = last_message.content if hasattr(last_message, 'content') else str(last_message)
-        
+
         # 评估条件
         for branch in branches:
             condition = branch.get("condition", "")
             if condition and condition.lower() in user_response.lower():
                 return branch.get("next_step", default_branch)
-        
+
         return default_branch
 
     def _find_step_by_id(self, step_id: str, step_metadata: List[Dict[str, Any]]) -> str:
@@ -164,9 +175,19 @@ class SurveyGraph():
             current_step_messages.append(step_message)
         response = self.fast_llm.invoke(messages)
         response_content = response.content if hasattr(response, 'content') else str(response)
-        is_end = "END" in response_content.upper() or len(current_step_messages) >= max_turns * 2 + 1
 
-        if is_end:
+        # 某个节点直接结束
+        if "END" in response_content.upper():
+            updated_state = {
+                **state,
+                "current_step_finish": True,
+                "current_step_messages": [],
+                "is_end": True,
+            }
+            return updated_state
+
+        is_finish = "FINISH" in response_content.upper() or len(current_step_messages) >= max_turns * 2 + 1
+        if is_finish:
             updated_state = {
                 **state,
                 "current_step_finish": True,
@@ -202,12 +223,24 @@ class SurveyGraph():
         return updated_state
 
     def _end_survey(self, state: SurveyGraphState):
-        """结束调研节点 - 输出配置的结束语"""
+        """结束调研节点 - 输出配置的结束语并保存聊天记录"""
         end_message = state.get("end_message")
         end_ai_message = AIMessage(content=end_message)
+
+        # 添加结束消息到消息列表
+        messages = state["messages"] + [end_ai_message]
+        conversation_id = state.get("thread_id")
+
+        # 保存聊天记录
+        try:
+            saved_path = self.chat_logger.save_chat_log(messages, conversation_id)
+            self.logger.info(f"调研会话结束，聊天记录已保存到: {saved_path}")
+        except Exception as e:
+            self.logger.error(f"保存聊天记录失败: {str(e)}")
+
         updated_state = {
             **state,
-            "messages": state["messages"] + [end_ai_message],
+            "messages": messages,
             "current_step_finish": True,
         }
         return updated_state

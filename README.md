@@ -139,6 +139,9 @@ EMBEDDING=dashscope:text-embedding-v2
 # 服务器配置
 HOST=0.0.0.0
 PORT=8000
+
+# 聊天记录保存路径配置
+CHAT_LOG_PATH=logs/chat_logs
 ```
 
 4. **启动后端服务**
@@ -198,6 +201,8 @@ npm run start
 - 对话历史自动保存
 - 支持多轮对话和状态恢复
 - 智能记忆管理确保重要信息不丢失
+- 聊天记录持久化：每个调研会话结束后自动保存到指定路径
+- 文件命名格式：`chat_{conversation_id}_{yyyymmddHHmmss}.json`
 
 ## 许可证
 

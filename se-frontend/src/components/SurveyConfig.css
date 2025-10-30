@@ -16,10 +16,6 @@
   }
 }
 
-.config-section.welcome-section {
-  grid-column: 1 / -1;
-}
-
 .config-header {
   text-align: center;
   margin-bottom: 2rem;
@@ -56,7 +52,7 @@
 
 .config-section {
   margin-bottom: 0;
-  padding: 2rem;
+  padding: 1.5rem;
   background: #f7fafc;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
@@ -70,6 +66,11 @@
   grid-column: 1 / -1;
 }
 
+.config-section.variables-section {
+  grid-column: 1 / -1;
+  margin-bottom: 2rem;
+}
+
 .config-section h3 {
   color: #2d3748;
   font-size: 1.25rem;
@@ -77,8 +78,15 @@
   margin: 0 0 1rem 0;
 }
 
+.section-description {
+  color: #718096;
+  font-size: 0.875rem;
+  margin: 0 0 1.5rem 0;
+  line-height: 1.5;
+}
+
 .input-group {
-  margin-bottom: 1rem;
+  margin-bottom: 0rem;
 }
 
 .input-group label {
@@ -89,24 +97,6 @@
   font-size: 0.875rem;
 }
 
-.input-group textarea {
-  width: 100%;
-  padding: 0.875rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-family: inherit;
-  resize: vertical;
-  transition: border-color 0.2s ease;
-  min-height: 80px;
-}
-
-.input-group textarea:focus {
-  outline: none;
-  border-color: #4299e1;
-  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
-}
-
 .input-group input {
   width: 100%;
   padding: 0.875rem;
@@ -115,6 +105,10 @@
   font-size: 0.875rem;
   font-family: inherit;
   transition: border-color 0.2s ease;
+}
+
+.input-group input.max-turns-input {
+  width: 30%;
 }
 
 .input-group input:focus {
@@ -194,6 +188,150 @@
 .add-step:hover {
   background: #bee3f8;
   border-color: #90cdf4;
+}
+
+/* 变量配置样式 */
+.variable-item {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.variable-item:last-child {
+  margin-bottom: 0;
+}
+
+.variable-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.variable-number {
+  color: #4299e1;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.variable-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .variable-fields {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+}
+
+.remove-variable {
+  background: #fed7d7;
+  color: #c53030;
+  border: 1px solid #feb2b2;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.remove-variable:hover {
+  background: #feb2b2;
+  border-color: #fc8181;
+}
+
+.add-variable {
+  background: #e6f3ff;
+  color: #4299e1;
+  border: 1px solid #bee3f8;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.add-variable:hover {
+  background: #bee3f8;
+  border-color: #90cdf4;
+}
+
+/* 变量高亮样式 */
+.variable-highlight {
+  background: #e6f3ff;
+  color: #2563eb;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  border: 1px solid #93c5fd;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9em;
+  display: inline;
+}
+
+/* 系统变量高亮样式 (END, FINISH) */
+.system-variable-highlight {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  border: 1px solid #fca5a5;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9em;
+  display: inline;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 高亮输入框包装器 */
+.highlight-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+/* 可编辑的高亮输入框 */
+.highlight-editable {
+  width: 100%;
+  padding: 0.875rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: white;
+  color: #2d3748;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  transition: border-color 0.2s ease;
+  outline: none;
+  min-height: 2.5em;
+}
+
+.highlight-editable:focus {
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+.highlight-editable:empty:before {
+  content: attr(data-placeholder);
+  color: #a0aec0;
+  pointer-events: none;
+}
+
+.highlight-textarea {
+  resize: vertical;
+  min-height: 80px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .config-actions {

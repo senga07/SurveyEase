@@ -6,6 +6,7 @@ import os
 import uuid
 from utils.unified_logger import get_logger
 from graph.survey_graph import SurveyGraph
+import re
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -25,14 +26,21 @@ class SurveyStep(BaseModel):
     branches: List[Dict[str, str]] = []  # 条件分支
 
 
+class SurveyVariable(BaseModel):
+    key: str
+    value: str
+
+
 class SurveyTemplate(BaseModel):
     id: str
     theme: str
     system_prompt: str
+    background_knowledge: str = ""
     max_turns: int
     welcome_message: str
     steps: List[SurveyStep]
     end_message: str
+    variables: List[SurveyVariable] = []
 
 
 def load_templates() -> List[Dict[str, Any]]:
@@ -55,7 +63,7 @@ def load_templates() -> List[Dict[str, Any]]:
 
 
 def load_template_by_id(template_id: str) -> Dict[str, Any]:
-    """根据模板ID加载特定模板"""
+    """根据模板ID加载特定模板（原始数据，不进行变量替换）"""
     try:
         templates = load_templates()
         template = next((t for t in templates if t["id"] == template_id), None)
@@ -80,19 +88,21 @@ def save_templates(templates: List[SurveyTemplate]) -> bool:
                 "id": template.id,
                 "theme": template.theme,
                 "system_prompt": template.system_prompt,
+                "background_knowledge": template.background_knowledge,
                 "max_turns": template.max_turns,
                 "welcome_message": template.welcome_message,
                 "steps": [
                     {
-                        "id": step.id, 
+                        "id": step.id,
                         "content": step.content,
                         "type": step.type,
                         "default_branch": step.default_branch,
                         "branches": step.branches
-                    } 
+                    }
                     for step in template.steps
                 ],
-                "end_message": template.end_message
+                "end_message": template.end_message,
+                "variables": [{"key": var.key, "value": var.value} for var in template.variables]
             }
             templates_dict.append(template_dict)
 
@@ -120,19 +130,21 @@ def update_template_by_id(template_id: str, updated_template: SurveyTemplate) ->
                     "id": updated_template.id,
                     "theme": updated_template.theme,
                     "system_prompt": updated_template.system_prompt,
+                    "background_knowledge": updated_template.background_knowledge,
                     "max_turns": updated_template.max_turns,
                     "welcome_message": updated_template.welcome_message,
                     "steps": [
                         {
-                            "id": step.id, 
+                            "id": step.id,
                             "content": step.content,
                             "type": step.type,
                             "default_branch": step.default_branch,
                             "branches": step.branches
-                        } 
+                        }
                         for step in updated_template.steps
                     ],
-                    "end_message": updated_template.end_message
+                    "end_message": updated_template.end_message,
+                    "variables": [{"key": var.key, "value": var.value} for var in updated_template.variables]
                 }
                 template_found = True
                 break
@@ -147,6 +159,65 @@ def update_template_by_id(template_id: str, updated_template: SurveyTemplate) ->
         return False
 
 
+def replace_variables(text: str, variables: List[SurveyVariable]) -> str:
+    """替换文本中的变量占位符"""
+    if not variables:
+        return text
+
+    # 创建变量映射字典
+    var_map = {var.key: var.value for var in variables}
+
+    # 使用正则表达式替换 {{key}} 格式的变量
+    def replace_var(match):
+        key = match.group(1)
+        return var_map.get(key, match.group(0))  # 如果找不到变量，保持原样
+
+    # 匹配 {{key}} 格式的变量
+    pattern = r'\{\{([^}]+)\}\}'
+    return re.sub(pattern, replace_var, text)
+
+
+def apply_variable_substitution(template: Dict[str, Any]) -> Dict[str, Any]:
+    """对模板应用变量替换"""
+    variables = template.get('variables', [])
+    if not variables:
+        return template
+
+    # 创建变量对象列表
+    var_objects = [SurveyVariable(**var) for var in variables]
+
+    # 替换各个字段中的变量
+    updated_template = template.copy()
+
+    # 替换主题
+    if 'theme' in updated_template:
+        updated_template['theme'] = replace_variables(updated_template['theme'], var_objects)
+
+    # 替换系统提示
+    if 'system_prompt' in updated_template:
+        updated_template['system_prompt'] = replace_variables(updated_template['system_prompt'], var_objects)
+
+    # 替换背景知识
+    if 'background_knowledge' in updated_template:
+        updated_template['background_knowledge'] = replace_variables(updated_template['background_knowledge'], var_objects)
+
+    # 替换开场白
+    if 'welcome_message' in updated_template:
+        updated_template['welcome_message'] = replace_variables(updated_template['welcome_message'], var_objects)
+
+    # 替换结束语
+    if 'end_message' in updated_template:
+        updated_template['end_message'] = replace_variables(updated_template['end_message'], var_objects)
+
+    # 替换步骤内容
+    if 'steps' in updated_template:
+        for step in updated_template['steps']:
+            if 'content' in step:
+                step['content'] = replace_variables(step['content'], var_objects)
+
+    return updated_template
+
+
 def clear_template_cache(template_id: str = None):
     """清理模板缓存，如果template_id为None则清理所有缓存"""
     if template_id:
@@ -158,9 +229,26 @@ def clear_template_cache(template_id: str = None):
 
 @router.get("/templates")
 async def get_templates():
-    """获取调研模板列表"""
+    """获取调研模板列表（用于配置页面，不进行变量替换）"""
     try:
-        return load_templates()
+        templates = load_templates()
+        return templates
+    except Exception as e:
+        logger.error(f"获取模板列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="获取模板列表失败")
+
+
+@router.get("/templates/runtime")
+async def get_templates_for_runtime():
+    """获取调研模板列表（用于运行时，进行变量替换）"""
+    try:
+        templates = load_templates()
+        # 对每个模板应用变量替换
+        processed_templates = []
+        for template in templates:
+            processed_template = apply_variable_substitution(template)
+            processed_templates.append(processed_template)
+        return processed_templates
     except Exception as e:
         logger.error(f"获取模板列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail="获取模板列表失败")
