@@ -304,9 +304,15 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         <p>{currentTemplateId ? '修改调研的开场白、步骤和结束语' : '配置新的调研模板'}</p>
       </div>
 
-      {/* 变量配置 */}
+      <div className="config-content">
+        {/* 变量配置 */}
         <div className="config-section variables-section">
-          <h3>变量配置</h3>
+          <div className="section-header">
+            <h3>
+              <span className="section-icon">📝</span>
+              变量配置
+            </h3>
+          </div>
           <p className="section-description">
             定义变量后，可以在主题、系统提示和步骤内容中使用 {`{{变量key}}`} 的格式进行引用
           </p>
@@ -318,8 +324,9 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                   type="button"
                   className="remove-variable"
                   onClick={() => removeVariable(index)}
+                  title="删除变量"
                 >
-                  删除
+                  <span className="icon-trash">🗑️</span>
                 </button>
               </div>
               <div className="variable-fields">
@@ -351,15 +358,19 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
             className="add-variable"
             onClick={addVariable}
           >
-            + 添加变量
+            <span className="icon-plus">+</span>
+            添加变量
           </button>
         </div>
 
-
-      <div className="config-content">
         {/* 基本信息配置 */}
         <div className="config-section basic-info-section">
-          <h3>基本信息</h3>
+          <div className="section-header">
+            <h3>
+              <span className="section-icon">⚙️</span>
+              基本信息
+            </h3>
+          </div>
            <div className="input-group">
              <label>调研主题 (最多50字符)</label>
              <HighlightInput
@@ -384,8 +395,20 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
             <CharCount current={systemPrompt.length} max={500} />
           </div>
           <div className="input-group">
+            <label>背景知识 (最多500字符)</label>
+            <HighlightInput
+              type="textarea"
+              value={backgroundKnowledge}
+              onChange={setBackgroundKnowledge}
+              placeholder="请输入背景知识，将自动拼接到系统提示后面..."
+              maxLength={500}
+              rows={4}
+            />
+            <CharCount current={backgroundKnowledge.length} max={500} />
+          </div>
+          <div className="input-group">
             <label>选择主持人</label>
-            <div className="input-hint">
+            <div className="section-description">
               选择主持人后，其角色信息将自动追加到系统提示中
               </div>
             <select
@@ -402,21 +425,10 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
             </select>
 
           </div>
-          <div className="input-group">
-            <label>背景知识 (最多500字符)</label>
-            <HighlightInput
-              type="textarea"
-              value={backgroundKnowledge}
-              onChange={setBackgroundKnowledge}
-              placeholder="请输入背景知识，将自动拼接到系统提示后面..."
-              maxLength={500}
-              rows={4}
-            />
-            <CharCount current={backgroundKnowledge.length} max={500} />
-          </div>
+          
           <div className="input-group">
             <label>最大轮数</label>
-            <div className="input-hint">
+            <div className="section-description">
               控制每个步骤最多可对话几轮
             </div>
             <input
@@ -432,26 +444,61 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         </div>
 
 
-         {/* 开场白配置 */}
-         <div className="config-section steps-section">
-           <h3>开场白配置</h3>
-           <div className="input-group">
-             <label>开场白内容 (最多50字符)</label>
-             <HighlightInput
-               type="textarea"
-               value={welcomeMessage}
-               onChange={setWelcomeMessage}
-               placeholder="请输入调研开场白..."
-               maxLength={50}
-               rows={1}
-             />
-             <CharCount current={welcomeMessage.length} max={50} />
+         {/* 开场白和结束语配置 */}
+         <div className="welcome-end-wrapper">
+           {/* 开场白配置 */}
+           <div className="config-section welcome-section">
+             <div className="section-header">
+               <h3>
+                 <span className="section-icon">👋</span>
+                 开场白配置
+               </h3>
+             </div>
+             <div className="input-group">
+               <label>开场白内容 (最多50字符)</label>
+               <HighlightInput
+                 type="textarea"
+                 value={welcomeMessage}
+                 onChange={setWelcomeMessage}
+                 placeholder="请输入调研开场白..."
+                 maxLength={50}
+                 rows={1}
+               />
+               <CharCount current={welcomeMessage.length} max={50} />
+             </div>
+           </div>
+
+           {/* 结束语配置 */}
+           <div className="config-section end-section">
+             <div className="section-header">
+               <h3>
+                 <span className="section-icon">🏁</span>
+                 结束语配置
+               </h3>
+             </div>
+             <div className="input-group">
+               <label>结束语内容 (最多50字符)</label>
+               <HighlightInput
+                 type="textarea"
+                 value={endMessage}
+                 onChange={setEndMessage}
+                 placeholder="请输入调研结束语..."
+                 maxLength={50}
+                 rows={1}
+               />
+               <CharCount current={endMessage.length} max={50} />
+             </div>
            </div>
          </div>
 
         {/* 步骤配置 */}
         <div className="config-section steps-section">
-          <h3>调研步骤配置</h3>
+          <div className="section-header">
+            <h3>
+              <span className="section-icon">📋</span>
+              调研步骤配置
+            </h3>
+          </div>
           {steps.map((step, index) => (
             <div key={step.id} className="step-item">
               <div className="step-header">
@@ -483,8 +530,9 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                     type="button" 
                     className="remove-step"
                     onClick={() => removeStep(step.id)}
+                    title="删除步骤"
                   >
-                    删除
+                    <span className="icon-trash">🗑️</span>
                   </button>
                 )}
               </div>
@@ -505,25 +553,36 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
               {/* 条件跳转配置 */}
               {step.type === 'condition' && (
                 <div className="condition-config">
-                  <h4>跳转规则</h4>
+                  <div className="condition-header">
+                    <h4>
+                      <span className="condition-icon">🔀</span>
+                      跳转规则
+                    </h4>
+                  </div>
 
                   <div className="jump-rule-display">
                     <div className="rule-line condition-line">
                       <div className="condition-group">
-                        <span className="rule-text">如果</span>
+                        <span className="rule-label">
+                          <span className="rule-icon">⚡</span>
+                          条件
+                        </span>
                         <input
                           type="text"
                           className="condition-input"
                           value={step.condition || ''}
                           onChange={(e) => updateStepCondition(step.id, e.target.value)}
-                          placeholder="条件表达式"
+                          placeholder="输入条件表达式，例如: user_age > 18"
                         />
                       </div>
                     </div>
 
                     <div className="rule-line jump-line">
-                      <div className="jump-group">
-                        <span className="rule-text">是，跳转到</span>
+                      <div className="jump-group jump-group-true">
+                        <span className="rule-label">
+                          <span className="rule-icon">✅</span>
+                          是，跳转到
+                        </span>
                         <select
                           className="step-select"
                           value={step.branches?.[0] || ''}
@@ -543,8 +602,11 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                         </select>
                       </div>
 
-                      <div className="jump-group">
-                        <span className="rule-text">否，跳转到</span>
+                      <div className="jump-group jump-group-false">
+                        <span className="rule-label">
+                          <span className="rule-icon">❌</span>
+                          否，跳转到
+                        </span>
                         <select
                           className="step-select"
                           value={step.branches?.[1] || ''}
@@ -574,25 +636,9 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
             className="add-step"
             onClick={addStep}
           >
-            + 添加步骤
+            <span className="icon-plus">+</span>
+            添加步骤
           </button>
-        </div>
-
-        {/* 结束语配置 */}
-        <div className="config-section steps-section">
-          <h3>结束语配置</h3>
-          <div className="input-group">
-            <label>结束语内容 (最多50字符)</label>
-            <HighlightInput
-              type="textarea"
-              value={endMessage}
-              onChange={setEndMessage}
-              placeholder="请输入调研结束语..."
-              maxLength={50}
-              rows={1}
-            />
-            <CharCount current={endMessage.length} max={50} />
-          </div>
         </div>
       </div>
 

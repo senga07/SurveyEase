@@ -178,7 +178,7 @@ const HostConfig: React.FC<HostConfigProps> = ({ onBack }) => {
                 value={formData.role}
                 onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 placeholder="请输入主持人角色描述，这将作为系统提示的一部分"
-                rows={6}
+                rows={10}
                 maxLength={500}
                 required
               />
