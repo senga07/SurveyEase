@@ -38,25 +38,19 @@ async def chat_survey(request: ChatRequest):
 
     async def generate_stream(template):
         try:
-            steps = [step["content"] for step in template["steps"]]
-            step_metadata = []
+            steps = []
             for step in template["steps"]:
-                step_meta = {
-                    "id": step.get("id", ""),
+                step_data = {
+                    "content": step.get("content", ""),
                     "type": step.get("type", "linear"),
-                    "default_branch": step.get("default_branch"),
-                    "branches": step.get("branches", [])
+                    "branches": step.get("branches", []),
+                    "condition": step.get("condition", "")
                 }
-                step_metadata.append(step_meta)
-
-            survey_graph = SurveyGraph(steps, step_metadata)
+                steps.append(step_data)
+            survey_graph = SurveyGraph(steps)
             template_graph_cache[request.template_id + conversation_id] = survey_graph
-            system_prompt = get_host_prompt(template)
-            system_prompt += "\n" + template["system_prompt"]
-            background_knowledge = template.get("background_knowledge", "")
-            if background_knowledge.strip():
-                system_prompt = f"{system_prompt}\n# 背景知识\n{background_knowledge}"
 
+            system_prompt = build_system_prompt(template)
             max_turns = template["max_turns"]
             msg_list = [SystemMessage(content=system_prompt),
                         AIMessage(content=template["welcome_message"]),
@@ -71,13 +65,30 @@ async def chat_survey(request: ChatRequest):
                 "current_step_messages": [],
                 "thread_id": conversation_id,
                 "end_message": template["end_message"],
-                "is_end": False,
-                "step_metadata": step_metadata
             }
             async for data in process_survey_stream(survey_graph, initial_state, conversation_id):
                 yield data
         except Exception as e:
             yield f"data: {json.dumps(f'{str(e)}', ensure_ascii=False)}\n\n"
+
+    def build_system_prompt(template):
+        system_prompt = get_host_prompt(template)
+        system_prompt += "\n" + template["system_prompt"]
+        background_knowledge = template.get("background_knowledge", "")
+        if background_knowledge.strip():
+            system_prompt = f"{system_prompt}\n# 背景知识\n{background_knowledge}"
+        return system_prompt
+
+    def get_host_prompt(template):
+        host_id = template.get("host_id")
+        if host_id:
+            try:
+                host = load_host_by_id(host_id)
+                if host and host.get("role"):
+                    return host['role']
+            except Exception as e:
+                raise ValueError(f"加载主持人配置失败: {str(e)}")
+        raise ValueError("加载主持人配置失败")
 
     return return_response(generate_stream(template))
 
@@ -107,7 +118,10 @@ async def process_survey_stream(survey_graph, current_state, conversation_id):
 
     try:
         async for event in survey_graph.graph.astream_events(current_state, config=config):
-            print(f"收到event: {event['event']} - {event.get('name', 'unknown')}")
+            if event["event"] == "on_chat_model_end":
+                log_llm_response(event)
+
+            # 处理流式输出
             if event["event"] == "on_chain_stream":
                 chunk = event.get("data", {}).get("chunk", {})
                 if isinstance(chunk, dict) and not "__interrupt__" in chunk:
@@ -123,6 +137,23 @@ async def process_survey_stream(survey_graph, current_state, conversation_id):
         yield f"data: {json.dumps(f'处理流式输出时出现错误: {str(e)}', ensure_ascii=False)}\n\n"
 
 
+def log_llm_response(event):
+    output = event.get("data", {}).get("output")
+    if output:
+        # 处理 AIMessage 对象
+        if hasattr(output, 'content'):
+            logger.info(f"llm: {output.content}")
+        # 处理字典格式的输出
+        elif isinstance(output, dict):
+            if "content" in output:
+                logger.info(f"llm: {output['content']}")
+            # 如果是消息列表，取最后一条
+            elif "messages" in output and isinstance(output["messages"], list):
+                last_msg = output["messages"][-1]
+                if hasattr(last_msg, 'content'):
+                    logger.info(f"llm: {last_msg.content}")
+
+
 def return_response(func):
     return StreamingResponse(
         func,
@@ -133,15 +164,3 @@ def return_response(func):
             "Content-Type": "text/event-stream"
         }
     )
-
-
-def get_host_prompt(template):
-    host_id = template.get("host_id")
-    if host_id:
-        try:
-            host = load_host_by_id(host_id)
-            if host and host.get("role"):
-                return host['role']
-        except Exception as e:
-            raise ValueError(f"加载主持人配置失败: {str(e)}")
-    raise ValueError("加载主持人配置失败")

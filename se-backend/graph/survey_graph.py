@@ -11,25 +11,24 @@ from typing import Dict, Any
 from utils.unified_logger import get_logger
 from utils.chat_logger import ChatLogger
 from langchain_core.messages.ai import AIMessage
+import os
 
 
 class SurveyGraphState(TypedDict):
     messages: List[BaseMessage]
-    steps: List[str]
+    steps: List[Dict[str, Any]]  # 步骤内容及元数据，包含 content、type、branches 等字段
     system_prompt: str
     background_knowledge: str
     max_turns: int
     current_step: int
     current_step_finish: bool
     current_step_messages: List[BaseMessage]
-    is_end: bool
     thread_id: str
     end_message: str
-    step_metadata: List[Dict[str, Any]]  # 步骤元数据
 
 
 class SurveyGraph():
-    def __init__(self, steps: List[str], step_metadata: List[Dict[str, Any]] = None):
+    def __init__(self, steps: List[Dict[str, Any]]):
 
         self.logger = get_logger(__name__)
         self.config = service_manager.get_config()
@@ -37,14 +36,9 @@ class SurveyGraph():
         self.fast_llm = llms.get('fast_llm')
         self.store = service_manager.store
         self.steps = steps
-        self.step_metadata = step_metadata or []
         self.checkpointer = MemorySaver(serde=CustomSerializer())
 
-        # 初始化聊天记录保存器
-        if self.config:
-            chat_log_path = getattr(self.config, 'chat_log_path', 'logs/chat_logs')
-        else:
-            chat_log_path = 'logs/chat_logs'
+        chat_log_path = getattr(self.config, 'chat_log_path', 'logs/chat_logs') if self.config else 'logs/chat_logs'
         self.chat_logger = ChatLogger(chat_log_path)
 
         self.graph = self._build_graph()
@@ -59,10 +53,9 @@ class SurveyGraph():
             raise ValueError("Steps列表不能为空")
 
         for i in range(len(self.steps)):
-            workflow.add_node(str(i) + "_q", self._generate_question)
+            # 使用闭包为每个节点创建绑定步骤索引的函数
+            workflow.add_node(str(i) + "_q", self._make_generate_question(i))
             workflow.add_node(str(i) + "_a", self._get_user_answer)
-
-        # 添加结束节点
         workflow.add_node("end_survey", self._end_survey)
 
         workflow.set_entry_point("0_q")
@@ -70,165 +63,161 @@ class SurveyGraph():
             workflow.add_edge(str(i) + "_q", str(i) + "_a")
 
         for i in range(len(self.steps)):
-            if i < len(self.steps) - 1:
-                workflow.add_conditional_edges(
-                    str(i) + "_a",
-                    self._should_continue,
-                    {
-                        "continue": str(i) + "_q",  # 继续当前步骤（多轮对话）
-                        "next": self._get_next_step,  # 根据路径决定下一步
-                        "end": "end_survey"  # 进入结束节点
-                    }
-                )
-            else:
-                workflow.add_conditional_edges(
-                    str(i) + "_a",
-                    self._should_continue,
-                    {
-                        "continue": str(i) + "_q",  # 继续当前步骤
-                        "end": "end_survey"  # 进入结束节点
-                    }
-                )
+            # 创建条件边映射，包含所有可能的节点名称
+            edge_map = {}
+            
+            # 为所有可能的条件跳转节点添加映射（0 到 len(self.steps)-1）
+            for j in range(len(self.steps)):
+                edge_map[str(j) + "_q"] = str(j) + "_q"  # 条件跳转到第j步
+            edge_map["end_survey"] = "end_survey"  # 条件跳转结束
+            
+            workflow.add_conditional_edges(
+                str(i) + "_a",
+                self._should_continue,
+                edge_map
+            )
         workflow.add_edge("end_survey", END)
-        return workflow.compile(checkpointer=self.checkpointer)
+        compile_graph = workflow.compile(checkpointer=self.checkpointer)
+        # self._visualize_graph(compile_graph)
+        return compile_graph
+
 
     def _should_continue(self, state: SurveyGraphState):
-        """判断是否继续当前节点或进入下一个节点"""
-        current_step = state.get("current_step")
-        current_step_finish = state.get("current_step_finish")
-        steps = state.get("steps")
-
-        if state["is_end"]:
-            return "end"
-
-        if current_step_finish:
-            if current_step < len(steps):
-                return "next"
-            else:
-                return "end"
+        """判断下一步应该路由到哪个节点"""
+        current_step = state["steps"][state["current_step"]]
+        step_type = current_step["type"]
+        
+        if step_type.lower() == 'linear':
+            return self._should_continue_for_linear(state)
         else:
-            return "continue"
+            return self._route_condition_step(state)
+
+
+    def _route_condition_step(self, state: SurveyGraphState):
+        """路由条件步骤到正确的下一步节点"""
+        try:
+            next_step_result = self._get_next_step(state)
+            
+            # 如果返回的是"END"字符串，直接跳转到结束节点
+            if next_step_result == "END":
+                return "end_survey"
+            
+            # 如果是索引，检查有效性并转换为节点名称
+            if isinstance(next_step_result, int):
+                if next_step_result < 0 or next_step_result >= len(self.steps):
+                    return "end_survey"
+                return str(next_step_result) + "_q"
+            return "end_survey"
+        except Exception as e:
+            return "end_survey"
+
 
     def _get_next_step(self, state: SurveyGraphState):
-        """根据条件跳转决定下一步"""
-        current_step = state.get("current_step")
-        step_metadata = state.get("step_metadata", [])
+        """获取条件步骤的下一个目标节点
+        
+        返回:
+            - 如果是"END"，返回字符串"END"
+            - 如果是步骤ID，返回对应的步骤索引（整数）
+        """
+        current_step = state["steps"][state["current_step"]]
+        conversation_context = self._assemble_conversation_context(state.get("current_step_messages", []))
+        condition_prompt = f"""根据对话记录分析是否满足判断条件，若满足则回复'Y'，否则回复'N'，只回答"Y"or"N"，不要其他内容。
+判断条件：{current_step["condition"]}
+对话记录：{conversation_context}"""
 
-        # 获取当前步骤的元数据
-        current_step_meta = step_metadata[current_step] if current_step < len(step_metadata) else {}
+        response = self.fast_llm.invoke([HumanMessage(content=condition_prompt)])
+        result = response.content.strip().lower()
+        branches = current_step["branches"]
 
-        # 如果是条件节点，根据条件选择下一步
-        if current_step_meta.get("type") == "condition":
-            next_step_id = self._evaluate_condition(current_step_meta, state)
-            return self._find_step_by_id(next_step_id, step_metadata)
-
-        # 如果是普通节点，按顺序执行下一步
-        return self._get_next_sequential_step(current_step, step_metadata)
-
-    def _evaluate_condition(self, step_meta: Dict[str, Any], state: SurveyGraphState) -> str:
-        """使用AI模型评估条件并返回下一步步骤ID"""
-        condition = step_meta.get("condition", "")
-        branches = step_meta.get("branches", [])
-
-        # 获取用户最后一条消息
-        messages = state.get("messages", [])
-        if not messages or len(branches) < 2:
-            return branches[1] if len(branches) > 1 else "end_survey"
-
-        last_message = messages[-1]
-        user_response = last_message.content if hasattr(last_message, 'content') else str(last_message)
-
-        if not condition:
-            return branches[1] if len(branches) > 1 else "end_survey"
-
-        # 使用AI模型判断条件是否满足
-        condition_prompt = f"""你是一个条件判断助手。请根据以下信息判断用户的回答是否满足条件：
-
-判断条件：{condition}
-用户回答：{user_response}
-
-请仔细分析用户回答的内容，判断是否满足上述条件。
-- 如果用户回答满足条件，回答"是"
-- 如果用户回答不满足条件，回答"否"
-- 只回答"是"或"否"，不要其他内容"""
+        selected_branch = branches[0] if "y" in result or "yes" in result or "true" in result else branches[1]
+        if selected_branch.upper() == "END":
+            return "END"
 
         try:
-            # 使用AI模型进行条件判断
-            response = self.fast_llm.invoke([HumanMessage(content=condition_prompt)])
-            result = response.content.strip().lower()
-            
-            # 判断AI的回答
-            if "是" in result or "yes" in result or "true" in result:
-                self.logger.info(f"条件判断：满足条件 '{condition}'，跳转到 {branches[0]}")
-                return branches[0]  # 满足条件
-            else:
-                self.logger.info(f"条件判断：不满足条件 '{condition}'，跳转到 {branches[1]}")
-                return branches[1]  # 不满足条件
-                
-        except Exception as e:
-            # 如果AI判断失败，回退到简单字符串匹配
-            self.logger.warning(f"AI条件判断失败，回退到字符串匹配: {str(e)}")
-            if condition.lower() in user_response.lower():
-                return branches[0]
-            else:
-                return branches[1]
+            next_step = int(selected_branch) - 1
+            # 注意：这里修改 state 是无效的，因为路由函数不能更新状态
+            # 状态的更新会在目标节点函数中进行
+            return next_step
+        except (ValueError, TypeError):
+            return "END"
 
-    def _find_step_by_id(self, step_id: str, step_metadata: List[Dict[str, Any]]) -> str:
-        """根据步骤ID查找对应的节点"""
-        for i, step_meta in enumerate(step_metadata):
-            if step_meta.get("id") == step_id:
-                return f"{i}_q"
-        return "end_survey"
 
-    def _get_next_sequential_step(self, current_step: int, step_metadata: List[Dict[str, Any]]) -> str:
-        """获取下一个顺序步骤"""
-        next_step = current_step + 1
-        if next_step < len(step_metadata):
-            return f"{next_step}_q"
+    def _should_continue_for_linear(self, state: SurveyGraphState):
+        """判断是否继续当前节点或进入下一个节点
+        
+        返回:
+            - 节点名称字符串，如 "0_q", "1_q", "end_survey"
+        """
+        current_step_index = state.get("current_step", 0)
+
+        if not state.get("current_step_finish"):
+            return str(current_step_index) + "_q"
+
+        next_step = current_step_index + 1
+        if next_step < len(state.get("steps", [])):
+            return str(next_step) + "_q"
         else:
             return "end_survey"
 
-    def _generate_question(self, state: SurveyGraphState):
 
-        current_step = state.get("current_step")
-        current_step_messages = state.get("current_step_messages")
-        steps = state.get("steps")
-        max_turns = state.get("max_turns")
-        messages = state.get("messages")
+    def _assemble_conversation_context(self, current_step_messages):
+        messages_text = []
+        for msg in current_step_messages:
+            content = msg.content if hasattr(msg, 'content') else str(msg)
+            if isinstance(msg, HumanMessage):
+                messages_text.append(f"用户回复：{content}")
+            elif isinstance(msg, AIMessage):
+                messages_text.append(f"AI提问：{content}")
+            else:
+                messages_text.append(str(content))
+        conversation_context = "\n".join(messages_text) if messages_text else "无对话记录"
+        return conversation_context
 
-        if len(current_step_messages) == 0:
-            step_message = AIMessage(content=steps[current_step])
-            messages.append(step_message)
-            current_step_messages.append(step_message)
-        response = self.fast_llm.invoke(messages)
-        response_content = response.content if hasattr(response, 'content') else str(response)
 
-        # 某个节点直接结束
-        if "END" in response_content.upper():
-            updated_state = {
-                **state,
-                "current_step_finish": True,
-                "current_step_messages": [],
-                "is_end": True,
-            }
+    def _make_generate_question(self, step_index: int):
+        """创建生成问题的节点函数，绑定步骤索引
+        
+        这样当条件跳转到新节点时，可以确保使用正确的步骤索引
+        """
+        def _generate_question(state: SurveyGraphState):
+            # 更新 current_step 为当前节点的步骤索引
+            current_step = step_index
+            
+            # 检测是否发生了步骤跳转（条件跳转或线性跳转）
+            # 如果步骤索引发生变化，需要重置当前步骤的状态
+            current_step_messages = [] if state.get("current_step") != step_index else state.get("current_step_messages", [])
+            steps = state.get("steps")
+            max_turns = state.get("max_turns")
+            messages = state.get("messages")
+
+            if len(current_step_messages) == 0:
+                current_step_data = steps[current_step] if current_step < len(steps) else {}
+                step_content = current_step_data.get("content", "")
+                step_message = AIMessage(content=step_content)
+                messages.append(step_message)
+                current_step_messages.append(step_message)
+            response = self.fast_llm.invoke(messages)
+            response_content = response.content if hasattr(response, 'content') else str(response)
+
+            is_finish = "FINISH" in response_content.upper() or len(current_step_messages) >= max_turns * 2 + 1
+            if is_finish:
+                updated_state = {
+                    **state,
+                    "current_step": step_index,
+                    "current_step_finish": True,
+                    "current_step_messages": [],  # 步骤完成，清空消息
+                }
+            else:
+                ai_response = AIMessage(content=response_content)
+                updated_state = {
+                    **state,
+                    "current_step": step_index,
+                    "messages": messages + [ai_response],
+                    "current_step_finish": False,  # 步骤未完成
+                    "current_step_messages": current_step_messages + [ai_response],
+                }
             return updated_state
-
-        is_finish = "FINISH" in response_content.upper() or len(current_step_messages) >= max_turns * 2 + 1
-        if is_finish:
-            updated_state = {
-                **state,
-                "current_step_finish": True,
-                "current_step_messages": [],
-            }
-        else:
-            ai_response = AIMessage(content=response_content)
-            updated_state = {
-                **state,
-                "messages": messages + [ai_response],
-                "current_step_finish": False,
-                "current_step_messages": current_step_messages + [ai_response],
-            }
-        return updated_state
+        return _generate_question
 
     def _get_user_answer(self, state: SurveyGraphState):
         current_step_messages = state["current_step_messages"]
@@ -258,7 +247,6 @@ class SurveyGraph():
         messages = state["messages"] + [end_ai_message]
         conversation_id = state.get("thread_id")
 
-        # 保存聊天记录
         try:
             saved_path = self.chat_logger.save_chat_log(messages, conversation_id)
             self.logger.info(f"调研会话结束，聊天记录已保存到: {saved_path}")
@@ -271,3 +259,25 @@ class SurveyGraph():
             "current_step_finish": True,
         }
         return updated_state
+
+
+    def _visualize_graph(self, compiled_graph):
+        try:
+            graph = compiled_graph.get_graph()
+            png_data = graph.draw_mermaid_png()
+
+            if png_data:
+                logs_dir = "logs"
+                if self.config:
+                    logs_dir = getattr(self.config, 'log_dir', 'logs')
+
+                os.makedirs(logs_dir, exist_ok=True)
+                import time
+                png_file = os.path.join(logs_dir, f"survey_graph_{time.time()}.png")
+
+                with open(png_file, 'wb') as f:
+                    f.write(png_data)
+
+                self.logger.info(f"SurveyGraph 可视化图片已保存到: {png_file}")
+        except Exception as e:
+            self.logger.warning(f"保存可视化图片失败: {str(e)}")

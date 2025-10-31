@@ -539,6 +539,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                               步骤{index + 1}
                             </option>
                           ))}
+                          <option value="END">结束流程</option>
                         </select>
                       </div>
 
@@ -559,6 +560,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                               步骤{index + 1}
                             </option>
                           ))}
+                          <option value="END">结束流程</option>
                         </select>
                       </div>
                     </div>
