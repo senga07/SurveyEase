@@ -480,6 +480,33 @@
   display: inline;
 }
 
+/* 确保条件输入框中的变量高亮样式正常显示 */
+.condition-input-wrapper .highlight-editable .variable-highlight {
+  background: #e6f3ff;
+  color: #2563eb;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  border: 1px solid #93c5fd;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9em;
+  display: inline;
+}
+
+.condition-input-wrapper .highlight-editable .system-variable-highlight {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  border: 1px solid #fca5a5;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9em;
+  display: inline;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /* 系统变量高亮样式 */
 .system-variable-highlight {
   background: #fef2f2;
@@ -591,6 +618,38 @@
   outline: none;
   border-color: #4299e1;
   box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+/* 条件输入框包装器样式 */
+.condition-input-wrapper {
+  flex: 1;
+  min-width: 200px;
+}
+
+.condition-input-wrapper .highlight-input-wrapper {
+  width: 100%;
+}
+
+.condition-input-wrapper .highlight-editable {
+  padding: 0.875rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: white;
+  transition: all 0.2s ease;
+  min-height: 2.5em;
+}
+
+.condition-input-wrapper .highlight-editable:hover {
+  border-color: #cbd5e0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.condition-input-wrapper .highlight-editable:focus {
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+  outline: none;
 }
 
 /* 跳转行样式 */

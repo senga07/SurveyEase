@@ -217,6 +217,9 @@ def apply_variable_substitution(template: Dict[str, Any]) -> Dict[str, Any]:
         for step in updated_template['steps']:
             if 'content' in step:
                 step['content'] = replace_variables(step['content'], var_objects)
+            # 替换步骤条件（跳转规则）
+            if 'condition' in step:
+                step['condition'] = replace_variables(step['condition'], var_objects)
 
     return updated_template
 

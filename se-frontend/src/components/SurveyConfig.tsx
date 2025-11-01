@@ -232,9 +232,26 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
   };
 
   const updateStepType = (id: string, type: 'linear' | 'condition') => {
-    setSteps(steps.map(step =>
-      step.id === id ? { ...step, type } : step
-    ));
+    setSteps(steps.map(step => {
+      if (step.id === id) {
+        // 如果切换到顺序跳转，清空条件跳转相关的配置（条件和跳转步骤）
+        if (type === 'linear') {
+          return { 
+            ...step, 
+            type, 
+            condition: undefined, 
+            branches: undefined 
+          };
+        }
+        // 如果切换到条件跳转，确保有默认的branches数组（两个空字符串表示未选择跳转步骤）
+        return { 
+          ...step, 
+          type, 
+          branches: step.branches || ['', ''] 
+        };
+      }
+      return step;
+    }));
   };
 
 
@@ -567,13 +584,15 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                           <span className="rule-icon">⚡</span>
                           条件
                         </span>
-                        <input
-                          type="text"
-                          className="condition-input"
-                          value={step.condition || ''}
-                          onChange={(e) => updateStepCondition(step.id, e.target.value)}
-                          placeholder="输入条件表达式，例如: user_age > 18"
-                        />
+                        <div className="condition-input-wrapper">
+                          <HighlightInput
+                            type="input"
+                            value={step.condition || ''}
+                            onChange={(value) => updateStepCondition(step.id, value)}
+                            placeholder="输入跳转逻辑，支持 {{变量key}} 格式"
+                            className="condition-highlight-input"
+                          />
+                        </div>
                       </div>
                     </div>
 
