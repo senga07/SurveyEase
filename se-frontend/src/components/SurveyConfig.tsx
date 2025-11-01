@@ -597,53 +597,66 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                     </div>
 
                     <div className="rule-line jump-line">
-                      <div className="jump-group jump-group-true">
-                        <span className="rule-label">
-                          <span className="rule-icon">✅</span>
-                          是，跳转到
-                        </span>
-                        <select
-                          className="step-select"
-                          value={step.branches?.[0] || ''}
-                          onChange={(e) => {
-                            const newBranches = [...(step.branches || ['', ''])];
-                            newBranches[0] = e.target.value;
-                            updateStepBranches(step.id, newBranches);
-                          }}
-                        >
-                          <option value="">请选择步骤</option>
-                          {steps.map((s, index) => (
-                            <option key={s.id} value={s.id}>
-                              步骤{index + 1}
-                            </option>
-                          ))}
-                          <option value="END">结束流程</option>
-                        </select>
-                      </div>
+                      {(() => {
+                        // 计算当前步骤的索引，只计算一次
+                        const currentStepIndex = steps.findIndex(st => st.id === step.id);
+                        // 过滤出当前步骤之后的步骤及其索引信息
+                        const nextStepsWithIndex = steps
+                          .map((s, idx) => ({ step: s, index: idx }))
+                          .filter(({ index }) => index > currentStepIndex);
+                        
+                        return (
+                          <>
+                            <div className="jump-group jump-group-true">
+                              <span className="rule-label">
+                                <span className="rule-icon">✅</span>
+                                是，跳转到
+                              </span>
+                              <select
+                                className="step-select"
+                                value={step.branches?.[0] || ''}
+                                onChange={(e) => {
+                                  const newBranches = [...(step.branches || ['', ''])];
+                                  newBranches[0] = e.target.value;
+                                  updateStepBranches(step.id, newBranches);
+                                }}
+                              >
+                                <option value="">请选择步骤</option>
+                                {nextStepsWithIndex.map(({ step: s, index }) => (
+                                  <option key={s.id} value={s.id}>
+                                    步骤{index + 1}
+                                  </option>
+                                ))}
+                                <option value="END">结束流程</option>
+                              </select>
+                            </div>
 
-                      <div className="jump-group jump-group-false">
-                        <span className="rule-label">
-                          <span className="rule-icon">❌</span>
-                          否，跳转到
-                        </span>
-                        <select
-                          className="step-select"
-                          value={step.branches?.[1] || ''}
-                          onChange={(e) => {
-                            const newBranches = [...(step.branches || ['', ''])];
-                            newBranches[1] = e.target.value;
-                            updateStepBranches(step.id, newBranches);
-                          }}
-                        >
-                          <option value="">请选择步骤</option>
-                          {steps.map((s, index) => (
-                            <option key={s.id} value={s.id}>
-                              步骤{index + 1}
-                            </option>
-                          ))}
-                          <option value="END">结束流程</option>
-                        </select>
-                      </div>
+                            <div className="jump-group jump-group-false">
+                              <span className="rule-label">
+                                <span className="rule-icon">❌</span>
+                                否，跳转到
+                              </span>
+                              <select
+                                className="step-select"
+                                value={step.branches?.[1] || ''}
+                                onChange={(e) => {
+                                  const newBranches = [...(step.branches || ['', ''])];
+                                  newBranches[1] = e.target.value;
+                                  updateStepBranches(step.id, newBranches);
+                                }}
+                              >
+                                <option value="">请选择步骤</option>
+                                {nextStepsWithIndex.map(({ step: s, index }) => (
+                                  <option key={s.id} value={s.id}>
+                                    步骤{index + 1}
+                                  </option>
+                                ))}
+                                <option value="END">结束流程</option>
+                              </select>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
