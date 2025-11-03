@@ -130,6 +130,26 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+.history-button {
+  background: #f0f4f8;
+  color: #4a90e2;
+  border: 1px solid #cbd5e0;
+  padding: 0.875rem 2rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.history-button:hover {
+  background: #e2e8f0;
+  border-color: #a0aec0;
+  color: #3182ce;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 /* 主题选择相关样式 */
 .template-selection {
   width: 100%;

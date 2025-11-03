@@ -1,4 +1,4 @@
-import { ChatRequest, StreamData, SurveyTemplate, Host } from '../types';
+import { ChatRequest, StreamData, SurveyTemplate, Host, ChatLogSummary, ChatLogDetail } from '../types';
 
 export class ApiService {
   private static baseUrl = '/api/survey';
@@ -199,6 +199,43 @@ export class ApiService {
     } catch (error) {
       console.error('删除主持人失败:', error);
       return false;
+    }
+  }
+
+  // 历史记录相关API
+  static async getChatHistory(): Promise<ChatLogSummary[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/history`);
+      if (response.ok) {
+        const data = await response.json();
+        return data;
+      } else {
+        console.error('获取历史记录列表失败:', response.status, response.statusText);
+        return [];
+      }
+    } catch (error) {
+      console.error('获取历史记录列表失败:', error);
+      return [];
+    }
+  }
+
+  static async getChatLogDetail(filename: string): Promise<ChatLogDetail | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/history/${encodeURIComponent(filename)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.error) {
+          console.error('获取历史记录详情失败:', data.error);
+          return null;
+        }
+        return data;
+      } else {
+        console.error('获取历史记录详情失败:', response.status, response.statusText);
+        return null;
+      }
+    } catch (error) {
+      console.error('获取历史记录详情失败:', error);
+      return null;
     }
   }
 }

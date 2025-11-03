@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import ChatWindow from './components/ChatWindow';
 import SurveyConfig from './components/SurveyConfig';
 import HostConfig from './components/HostConfig';
+import ChatHistory from './components/ChatHistory';
 import { useSurvey } from './hooks/useSurvey';
 import { SurveyTemplate } from './types';
 import { ApiService } from './services/api';
@@ -19,6 +20,7 @@ function App() {
 
   const [showConfig, setShowConfig] = useState(false);
   const [showHostConfig, setShowHostConfig] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [templates, setTemplates] = useState<SurveyTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<SurveyTemplate | null>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
@@ -75,6 +77,14 @@ function App() {
     setShowHostConfig(false);
   };
 
+  const handleHistoryClick = () => {
+    setShowHistory(true);
+  };
+
+  const handleBackFromHistory = () => {
+    setShowHistory(false);
+  };
+
   return (
     <div className="App">
       <header className="App-header">
@@ -83,7 +93,11 @@ function App() {
       </header>
       
       <main className="App-main">
-        {showHostConfig ? (
+        {showHistory ? (
+          <ChatHistory 
+            onBack={handleBackFromHistory}
+          />
+        ) : showHostConfig ? (
           <HostConfig 
             onBack={handleBackFromHostConfig}
           />
@@ -154,6 +168,12 @@ function App() {
                     className="host-config-button"
                   >
                     主持人配置
+                  </button>
+                  <button 
+                    onClick={handleHistoryClick}
+                    className="history-button"
+                  >
+                    历史记录
                   </button>
                 </div>
               </div>

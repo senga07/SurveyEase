@@ -53,3 +53,24 @@ export interface Host {
   name: string;
   role: string;
 }
+
+export interface ChatLogSummary {
+  filename: string;
+  conversation_id: string;
+  timestamp: string;
+  created_at: string;
+  message_count: number;
+}
+
+export interface ChatLogDetail {
+  conversation_id: string;
+  timestamp: string;
+  created_at: string;
+  message_count: number;
+  messages: Array<{
+    type: string;
+    content: string;
+    timestamp: string;
+    additional_kwargs?: any;
+  }>;
+}

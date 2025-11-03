@@ -1,4 +1,5 @@
 import json
+import os
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -12,9 +13,12 @@ from api.template import load_template_by_id, template_graph_cache, apply_variab
 from api.host import load_host_by_id
 from graph.survey_graph import SurveyGraph
 from utils.unified_logger import get_logger
+from utils.chat_logger import ChatLogger
+from cfg.setting import get_settings
 
 router = APIRouter()
 logger = get_logger(__name__)
+chat_logger = ChatLogger(get_settings().chat_log_path)
 
 
 class ChatRequest(BaseModel):
@@ -163,3 +167,77 @@ def return_response(func):
             "Content-Type": "text/event-stream"
         }
     )
+
+
+class ChatLogSummary(BaseModel):
+    """聊天记录摘要"""
+    filename: str
+    conversation_id: str
+    timestamp: str
+    created_at: str
+    message_count: int
+
+
+@router.get("/chat/history")
+async def get_chat_history():
+    """获取所有聊天记录列表"""
+    try:
+        log_files = chat_logger.list_chat_logs()
+        history = []
+        
+        for file_path in log_files:
+            try:
+                # 读取文件获取基本信息
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    log_data = json.load(f)
+                
+                filename = os.path.basename(file_path)
+                history.append(ChatLogSummary(
+                    filename=filename,
+                    conversation_id=log_data.get("conversation_id", ""),
+                    timestamp=log_data.get("timestamp", ""),
+                    created_at=log_data.get("created_at", ""),
+                    message_count=log_data.get("message_count", 0)
+                ))
+            except Exception as e:
+                logger.error(f"读取聊天记录文件失败 {file_path}: {str(e)}")
+                continue
+        
+        # 按创建时间倒序排列（最新的在前）
+        history.sort(key=lambda x: x.timestamp, reverse=True)
+        return history
+        
+    except Exception as e:
+        logger.error(f"获取聊天记录列表失败: {str(e)}")
+        return []
+
+
+@router.get("/chat/history/{filename}")
+async def get_chat_log_detail(filename: str):
+    """获取单个聊天记录的详细信息"""
+    try:
+        # 安全检查：只允许访问 chat_logs 目录下的文件
+        if not filename.endswith('.json') or '..' in filename or '/' in filename:
+            return {"error": "无效的文件名"}
+        
+        file_path = os.path.join(chat_logger.log_path, filename)
+        
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            return {"error": "文件不存在"}
+        
+        # 读取并返回聊天记录
+        log_data = chat_logger.load_chat_log(file_path)
+        
+        # 过滤消息，只返回用户和AI的消息（不返回系统消息）
+        filtered_messages = [
+            msg for msg in log_data.get("messages", [])
+            if msg.get("type") in ["HumanMessage", "AIMessage"]
+        ]
+        
+        log_data["messages"] = filtered_messages
+        return log_data
+        
+    except Exception as e:
+        logger.error(f"获取聊天记录详情失败: {str(e)}")
+        return {"error": f"获取聊天记录失败: {str(e)}"}
