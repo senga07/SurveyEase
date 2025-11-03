@@ -67,10 +67,10 @@ export class ApiService {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              let content = line.slice(6);
-              // 去掉前后的双引号
-              if (content.startsWith('"') && content.endsWith('"')) {
-                content = content.slice(1, -1);
+              let content = line.slice(6).trim();
+              // 使用 JSON.parse 正确解析 JSON 字符串，这样 \n 会被正确解析为换行符
+              if (content) {
+                content = JSON.parse(content);
               }
               const data: StreamData = { content };
               onData(data);

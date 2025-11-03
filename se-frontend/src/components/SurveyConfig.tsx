@@ -131,6 +131,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
   ]);
   const [endMessage, setEndMessage] = useState('');
   const [variables, setVariables] = useState<SurveyVariable[]>([]);
+  const [variableErrors, setVariableErrors] = useState<Record<number, string>>({});
   const [hosts, setHosts] = useState<Host[]>([]);
   const [selectedHostId, setSelectedHostId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -155,6 +156,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         setSteps([{ id: '1', content: '' }]);
         setEndMessage('');
         setVariables([]);
+        setVariableErrors({});
         setSelectedHostId('');
         return;
       }
@@ -180,6 +182,7 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
         setSteps(template.steps || [{ id: '1', content: '' }]);
         setEndMessage(template.end_message || '');
         setVariables(template.variables || []);
+        setVariableErrors({});
         setSelectedHostId(template.host_id || '');
       }
     } catch (error) {
@@ -222,13 +225,62 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
   };
 
   const removeVariable = (index: number) => {
-    setVariables(variables.filter((_, i) => i !== index));
+    const newVariables = variables.filter((_, i) => i !== index);
+    setVariables(newVariables);
+    
+    // 更新错误状态，重新检查剩余的变量
+    const updatedErrors: Record<number, string> = {};
+    const keySet = new Set<string>();
+    
+    newVariables.forEach((variable, i) => {
+      const trimmedKey = variable.key.trim();
+      if (!trimmedKey) {
+        return;
+      }
+      
+      if (keySet.has(trimmedKey)) {
+        updatedErrors[i] = '变量名称不能重复';
+      } else {
+        keySet.add(trimmedKey);
+      }
+    });
+    
+    setVariableErrors(updatedErrors);
   };
 
   const updateVariable = (index: number, field: keyof SurveyVariable, value: string) => {
     const updatedVariables = [...variables];
     updatedVariables[index] = { ...updatedVariables[index], [field]: value };
     setVariables(updatedVariables);
+
+    // 如果更新的是key字段，检查是否重复
+    if (field === 'key') {
+      // 重新检查所有变量的重复性
+      const updatedErrors: Record<number, string> = {};
+      const keyMap = new Map<string, number[]>();
+      
+      // 收集所有非空的key及其索引
+      updatedVariables.forEach((variable, i) => {
+        const trimmedKey = variable.key.trim();
+        if (trimmedKey) {
+          if (!keyMap.has(trimmedKey)) {
+            keyMap.set(trimmedKey, []);
+          }
+          keyMap.get(trimmedKey)!.push(i);
+        }
+      });
+      
+      // 标记重复的变量
+      keyMap.forEach((indices) => {
+        if (indices.length > 1) {
+          indices.forEach(i => {
+            updatedErrors[i] = '变量名称不能重复';
+          });
+        }
+      });
+      
+      setVariableErrors(updatedErrors);
+    }
   };
 
   const updateStepType = (id: string, type: 'linear' | 'condition') => {
@@ -270,6 +322,32 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
 
 
   const saveTemplate = async () => {
+    // 保存前进行最终校验
+    const errors: Record<number, string> = {};
+    const keySet = new Set<string>();
+    
+    variables.forEach((variable, index) => {
+      const trimmedKey = variable.key.trim();
+      if (!trimmedKey) {
+        // 跳过空key的变量
+        return;
+      }
+      
+      if (keySet.has(trimmedKey)) {
+        errors[index] = '变量名称不能重复';
+      } else {
+        keySet.add(trimmedKey);
+      }
+    });
+    
+    // 如果有错误，更新错误状态并提示用户
+    if (Object.keys(errors).length > 0) {
+      setVariableErrors(errors);
+      alert('存在重复的变量名称，请检查并修改后再保存');
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       // 生成临时ID用于新增模式
@@ -355,7 +433,11 @@ const SurveyConfig: React.FC<SurveyConfigProps> = ({ templateId, onBack, onTempl
                     onChange={(e) => updateVariable(index, 'key', e.target.value)}
                     placeholder="例如: product_name"
                     maxLength={50}
+                    className={variableErrors[index] ? 'input-error' : ''}
                   />
+                  {variableErrors[index] && (
+                    <span className="error-message">{variableErrors[index]}</span>
+                  )}
                 </div>
                 <div className="input-group">
                   <label>变量值</label>

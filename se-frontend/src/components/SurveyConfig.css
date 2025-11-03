@@ -797,3 +797,22 @@
   font-size: 0.75rem;
   color: #0c4a6e;
 }
+
+/* 错误提示样式 */
+.input-error {
+  border-color: #fc8181 !important;
+  box-shadow: 0 0 0 3px rgba(252, 129, 129, 0.1) !important;
+}
+
+.input-error:focus {
+  border-color: #fc8181 !important;
+  box-shadow: 0 0 0 3px rgba(252, 129, 129, 0.2) !important;
+}
+
+.error-message {
+  display: block;
+  color: #c53030;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
