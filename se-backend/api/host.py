@@ -78,8 +78,8 @@ def save_hosts(hosts: List[Host]) -> bool:
         return False
 
 
-def update_host_by_id(host_id: str, updated_host: Host) -> bool:
-    """根据ID更新单个主持人配置"""
+def _update_host_by_id_internal(host_id: str, updated_host: Host) -> bool:
+    """根据ID更新单个主持人配置（内部函数）"""
     try:
         # 加载现有主持人配置列表
         existing_hosts = load_hosts()
@@ -106,8 +106,8 @@ def update_host_by_id(host_id: str, updated_host: Host) -> bool:
         return False
 
 
-def delete_host_by_id(host_id: str) -> bool:
-    """根据ID删除单个主持人配置"""
+def _delete_host_by_id_internal(host_id: str) -> bool:
+    """根据ID删除单个主持人配置（内部函数）"""
     try:
         # 加载现有主持人配置列表
         existing_hosts = load_hosts()
@@ -204,7 +204,7 @@ async def update_host_by_id(host_id: str, host: Host):
             raise HTTPException(status_code=400, detail="主持人ID不匹配")
 
         # 更新主持人配置
-        if update_host_by_id(host_id, host):
+        if _update_host_by_id_internal(host_id, host):
             return {"message": "主持人配置更新成功"}
         else:
             raise HTTPException(status_code=404, detail="主持人配置未找到")
@@ -220,7 +220,7 @@ async def update_host_by_id(host_id: str, host: Host):
 async def delete_host_by_id(host_id: str):
     """根据ID删除单个主持人配置"""
     try:
-        if delete_host_by_id(host_id):
+        if _delete_host_by_id_internal(host_id):
             return {"message": "主持人配置删除成功"}
         else:
             raise HTTPException(status_code=404, detail="主持人配置未找到")
