@@ -28,6 +28,8 @@ SurveyEase 是一个基于 AI 的智能调研平台，专门用于进行消费�
 - **LangChain** - LLM 应用开发框架
 - **LangMem** - 智能记忆管理
 - **Pydantic** - 数据验证和序列化
+- **SQLAlchemy** - ORM 框架
+- **MySQL** - 关系型数据库
 
 ## 项目结构
 
@@ -39,7 +41,12 @@ SurveyEase/
 │   │   ├── survey.py         # 调研对话 API
 │   │   └── template.py       # 模板管理 API
 │   ├── cfg/                  # 配置管理
-│   │   └── setting.py        # 应用配置
+│   │   ├── environment.py   # 环境管理
+│   │   └── setting.py       # 应用配置
+│   ├── database/            # 数据库管理
+│   │   ├── __init__.py
+│   │   ├── connection.py    # MySQL连接管理
+│   │   └── models.py        # 数据库模型定义
 │   ├── constants/            # 常量定义
 │   ├── graph/                # 对话图管理
 │   │   └── survey_graph.py   # 调研对话流程
@@ -47,14 +54,15 @@ SurveyEase/
 │   ├── memory/               # 记忆管理
 │   │   └── embeddings.py     # 向量嵌入
 │   ├── services/             # 服务层
-│   │   └── service_manager.py # 服务管理器
-│   ├── template/             # 模板配置
-│   │   ├── host_config.json  # 主持人配置
-│   │   └── survey_template.json  # 调研模板
+│   │   ├── service_manager.py # 服务管理器
+│   │   └── chat_service.py   # 聊天记录服务
 │   ├── utils/                # 工具类
 │   │   ├── custom_serializer.py
 │   │   ├── json_utils.py
 │   │   └── unified_logger.py
+│   ├── scripts/              # 启动脚本
+│   │   ├── start.sh         # Python启动脚本
+│   │   └── start_uvicorn.sh # Uvicorn启动脚本
 │   ├── main.py               # 应用入口
 │   └── pyproject.toml        # 项目配置
 ├── se-frontend/              # 前端应用
@@ -110,13 +118,19 @@ SurveyEase/
 - **WebSocket**：前端与后端实时通信
 - **状态同步**：保持前后端状态一致
 
-### 5. 主持人管理系统
+### 5. 聊天记录管理
+- **数据库存储**：所有聊天记录存储在 MySQL 数据库中
+- **会话管理**：支持按会话ID查询和管理聊天记录
+- **消息持久化**：实时保存每条消息到数据库
+- **历史记录查询**：支持查询所有会话列表和详细信息
+
+### 6. 主持人管理系统
 - **主持人管理**：支持创建、编辑、删除主持人配置
 - **角色定义**：为每个主持人定义独特的角色和性格
 - **自动集成**：选择主持人后，角色信息自动追加到系统提示中
 <img src="images/hosts.png" alt="Alt text" width="600" height="500">
 
-### 6. 变量与高亮系统
+### 7. 变量与高亮系统
 - **变量定义**：在模板中定义可复用变量
 - **变量引用**：在主题、系统提示、步骤内容中使用 `{{变量key}}` 格式引用
 - **实时高亮**：输入框实时高亮显示变量引用，提升编辑体验
@@ -127,7 +141,40 @@ SurveyEase/
 ### 环境要求
 - Python 3.11+
 - Node.js 18+
+- MySQL 5.7+ 或 MySQL 8.0+
 - 支持的 LLM 提供商：Azure OpenAI、阿里云百炼
+
+### 数据库初始化
+
+在启动后端服务之前，需要先创建数据库并执行建表 SQL：
+
+1. **创建数据库**
+```sql
+CREATE DATABASE survey_ease CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+2. **执行建表 SQL**
+
+执行建表脚本：
+```bash
+mysql -u your_username -p survey_ease < se-backend/database/init.sql
+```
+
+或者直接在 MySQL 客户端中执行：
+```sql
+USE survey_ease;
+SOURCE se-backend/database/init.sql;
+```
+
+数据库表结构包括：
+- `ai_hosts` - 主持人表
+- `ai_survey_templates` - 调研模板表
+- `ai_survey_template_steps` - 调研模板步骤表
+- `ai_survey_template_variables` - 调研模板变量表
+- `ai_conversations` - 会话记录表
+- `ai_chat_messages` - 聊天消息表
+
+详细的建表 SQL 脚本位于 `se-backend/database/init.sql`，也可以参考模型定义文件 `se-backend/database/models.py`。
 
 ### 后端安装和启动
 
@@ -146,8 +193,16 @@ pip install -e .
 ```
 
 3. **配置环境变量**
-创建 `.env` 文件：
+
+项目支持多环境配置（本地环境、测试环境、生产环境）。根据你的需求创建对应的配置文件：
+
+> **注意**：请使用 `.env.local`、`.env.test` 或 `.env.prod`
+
+**本地开发环境** - 创建 `.env.local` 文件：
 ```env
+# 环境配置
+ENV=local
+
 # Azure OpenAI 配置
 AZURE_OPENAI_API_KEY=your_azure_openai_api_key
 AZURE_OPENAI_ENDPOINT=your_azure_endpoint
@@ -164,18 +219,91 @@ EMBEDDING=dashscope:text-embedding-v2
 HOST=0.0.0.0
 PORT=8000
 
-# 聊天记录保存路径配置
-CHAT_LOG_PATH=logs/chat_logs
+# MySQL数据库配置（本地环境）
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_DATABASE=survey_ease
+MYSQL_USERNAME=root
+MYSQL_PASSWORD=your_local_password
+MYSQL_CHARSET=utf8mb4
+MYSQL_USE_SSL=false
+MYSQL_POOL_SIZE=10
+MYSQL_POOL_RECYCLE=3600
 ```
+
+**测试环境** - 创建 `.env.test` 文件（配置示例）：
+```env
+ENV=test
+# ... 其他配置项，参考本地环境格式
+# MySQL配置会使用测试环境的默认值
+```
+
+**生产环境** - 创建 `.env.prod` 文件（配置示例）：
+```env
+ENV=prod
+# ... 其他配置项，参考本地环境格式
+# MySQL配置会使用生产环境的默认值
+```
+
+> **注意**：
+> - 必须创建对应环境的配置文件（`.env.local`、`.env.test` 或 `.env.prod`）
+> - 如果不创建环境配置文件，系统会使用代码中的默认配置
+> - 每个环境都有对应的 MySQL 默认配置（可在代码中查看或通过环境变量覆盖）
+> - 生产环境密码建议从环境变量或密钥管理服务获取，不要直接写在配置文件中
 
 4. **启动后端服务**
-```bash
-# 使用 uvicorn 启动
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
-# 或使用 Python 直接启动
-python main.py
+支持多种启动方式，可以根据环境选择：
+
+**方式一：使用命令行参数指定环境**
+```bash
+# 本地环境
+python main.py --env local
+
+# 测试环境
+python main.py --env test
+
+# 生产环境
+python main.py --env prod
 ```
+
+**方式二：使用环境变量指定**
+```bash
+# 设置环境变量后启动
+export ENV=test
+python main.py
+
+# 或使用 uvicorn
+ENV=test uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+**方式三：使用启动脚本（推荐）**
+```bash
+# 使用启动脚本（Python 直接启动）
+./scripts/start.sh local    # 本地环境
+./scripts/start.sh test     # 测试环境
+./scripts/start.sh prod     # 生产环境
+
+# 使用 Uvicorn 启动脚本（支持热重载，适合开发）
+./scripts/start_uvicorn.sh local   # 本地环境（开发模式）
+./scripts/start_uvicorn.sh test   # 测试环境
+```
+
+**方式四：使用 uvicorn 直接启动**
+```bash
+# 本地环境（开发模式，支持热重载）
+ENV=local uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# 测试/生产环境
+ENV=test uvicorn main:app --host 0.0.0.0 --port 8000
+ENV=prod uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+> **配置优先级**（从高到低）：
+> 1. 命令行参数 `--env`
+> 2. 环境变量 `ENV`
+> 3. `.env.{env}` 文件中的配置
+> 4. 代码中的默认配置
 
 ### 前端安装和启动
 
@@ -204,7 +332,7 @@ npm run start
 
 ## 使用指南
 
-### 1. 管理主持人配置（可选）
+### 1. 管理主持人配置
 1. 点击"主持人配置"按钮进入主持人管理页面
 2. 点击"添加主持人"创建新主持人
 3. 填写主持人名称和角色描述（角色描述将作为系统提示的一部分）
@@ -248,11 +376,17 @@ npm run start
 <img src="images/chat.png" alt="Alt text" width="600" height="500">
 
 ### 4. 管理调研数据
-- 对话历史自动保存
-- 支持多轮对话和状态恢复
-- 智能记忆管理确保重要信息不丢失
-- 聊天记录持久化：每个调研会话结束后自动保存到指定路径
-- 文件命名格式：`chat_{conversation_id}_{yyyymmddHHmmss}.json`
+- **对话历史自动保存**：所有聊天记录实时保存到 MySQL 数据库
+- **支持多轮对话和状态恢复**：使用 LangGraph 检查点机制保存对话状态
+- **智能记忆管理**：确保重要信息不丢失
+- **聊天记录查询**：
+  - 支持查看所有会话列表
+  - 支持按会话ID查询详细信息
+  - 消息按时间顺序存储和查询
+- **数据库存储**：
+  - 会话记录存储在 `ai_conversations` 表
+  - 消息记录存储在 `ai_chat_messages` 表
+  - 支持消息类型：HumanMessage、AIMessage、SystemMessage
 
 ## 许可证
 

@@ -219,9 +219,9 @@ export class ApiService {
     }
   }
 
-  static async getChatLogDetail(filename: string): Promise<ChatLogDetail | null> {
+  static async getChatLogDetail(conversation_id: string): Promise<ChatLogDetail | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/chat/history/${encodeURIComponent(filename)}`);
+      const response = await fetch(`${this.baseUrl}/chat/history/${encodeURIComponent(conversation_id)}`);
       if (response.ok) {
         const data = await response.json();
         if (data.error) {

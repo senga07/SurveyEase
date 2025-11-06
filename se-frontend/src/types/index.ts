@@ -55,7 +55,6 @@ export interface Host {
 }
 
 export interface ChatLogSummary {
-  filename: string;
   conversation_id: string;
   timestamp: string;
   created_at: string;

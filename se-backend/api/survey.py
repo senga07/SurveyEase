@@ -1,24 +1,24 @@
 import json
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages.ai import AIMessage
 from langchain_core.messages.human import HumanMessage
 from langchain_core.messages.system import SystemMessage
 from pydantic import BaseModel
 from langgraph.types import Command
 
-from api.template import load_template_by_id, template_graph_cache, apply_variable_substitution
-from api.host import load_host_by_id
+from api.template import load_template_by_id_from_db, template_graph_cache, apply_variable_substitution
+from api.host import get_host_by_id_from_db
+from database import get_db
 from graph.survey_graph import SurveyGraph
 from utils.unified_logger import get_logger
-from utils.chat_logger import ChatLogger
-from cfg.setting import get_settings
+from services.chat_service import ChatService
 
 router = APIRouter()
 logger = get_logger(__name__)
-chat_logger = ChatLogger(get_settings().chat_log_path)
 
 
 class ChatRequest(BaseModel):
@@ -34,13 +34,13 @@ class ContinueRequest(BaseModel):
 
 
 @router.post("/chat/stream")
-async def chat_survey(request: ChatRequest):
+async def chat_survey(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """与调研助手对话 - 使用astream_events实现流式响应"""
-    raw_template = load_template_by_id(request.template_id)
+    raw_template = await load_template_by_id_from_db(request.template_id, db)
     template = apply_variable_substitution(raw_template)
     conversation_id = request.conversation_id
 
-    async def generate_stream(template):
+    async def generate_stream(template, db_session: AsyncSession):
         try:
             steps = []
             for step in template["steps"]:
@@ -54,7 +54,7 @@ async def chat_survey(request: ChatRequest):
             survey_graph = SurveyGraph(steps)
             template_graph_cache[request.template_id + conversation_id] = survey_graph
 
-            system_prompt = build_system_prompt(template)
+            system_prompt = await build_system_prompt(template, db_session)
             max_turns = template["max_turns"]
             msg_list = [SystemMessage(content=system_prompt),
                         AIMessage(content=template["welcome_message"]),
@@ -69,35 +69,55 @@ async def chat_survey(request: ChatRequest):
                 "thread_id": conversation_id,
                 "end_message": template["end_message"],
             }
-            async for data in process_survey_stream(survey_graph, initial_state, conversation_id):
+            
+            # 创建会话记录
+            await ChatService.create_or_update_conversation(
+                db=db_session,
+                conversation_id=conversation_id,
+                template_id=request.template_id,
+                message_count=0
+            )
+            
+            # 保存初始消息（系统消息、欢迎消息和用户第一条消息）
+            for order, msg in enumerate(msg_list, start=1):
+                await ChatService.save_message(
+                    db=db_session,
+                    conversation_id=conversation_id,
+                    message=msg,
+                    message_order=order
+                )
+            
+            async for data in process_survey_stream(survey_graph, initial_state, conversation_id, request.template_id, db_session):
                 yield data
         except Exception as e:
             yield f"data: {json.dumps(f'{str(e)}', ensure_ascii=False)}\n\n"
 
-    def build_system_prompt(template):
-        system_prompt = get_host_prompt(template)
+    async def build_system_prompt(template, db_session: AsyncSession):
+        host_prompt = await get_host_prompt(template, db_session)
+        system_prompt = host_prompt
         system_prompt += "\n" + template["system_prompt"]
         background_knowledge = template.get("background_knowledge", "")
         if background_knowledge.strip():
             system_prompt = f"{system_prompt}\n# 背景知识\n{background_knowledge}"
         return system_prompt
 
-    def get_host_prompt(template):
+    async def get_host_prompt(template, db_session: AsyncSession):
         host_id = template.get("host_id")
         if host_id:
             try:
-                host = load_host_by_id(host_id)
-                if host and host.get("role"):
-                    return host['role']
+                from api.host import get_host_by_id_from_db
+                host = await get_host_by_id_from_db(host_id, db_session)
+                if host and host.role:
+                    return host.role
             except Exception as e:
                 raise ValueError(f"加载主持人配置失败: {str(e)}")
-        raise ValueError("加载主持人配置失败")
+        return ""
 
-    return return_response(generate_stream(template))
+    return return_response(generate_stream(template, db))
 
 
 @router.post("/chat/continue")
-async def continue_survey(request: ContinueRequest):
+async def continue_survey(request: ContinueRequest, db: AsyncSession = Depends(get_db)):
     """继续调研对话 - 接收用户回答并继续执行图流程"""
     conversation_id = request.conversation_id
     template_id = request.template_id
@@ -105,9 +125,23 @@ async def continue_survey(request: ContinueRequest):
 
     async def continue_stream():
         try:
+            # 保存用户回复消息
+            user_message = HumanMessage(content=request.user_response)
+            # 获取当前消息数量
+            existing_messages = await ChatService.get_messages_by_conversation_id(db, conversation_id, include_system=True)
+            next_order = len(existing_messages) + 1
+            await ChatService.save_message(
+                db=db,
+                conversation_id=conversation_id,
+                message=user_message,
+                message_order=next_order
+            )
+            
             async for data in process_survey_stream(survey_graph,
                                                     Command(resume=request.user_response),
-                                                    conversation_id):
+                                                    conversation_id,
+                                                    template_id,
+                                                    db):
                 yield data
         except Exception as e:
             yield f"data: {json.dumps(f'{str(e)}', ensure_ascii=False)}\n\n"
@@ -115,9 +149,14 @@ async def continue_survey(request: ContinueRequest):
     return return_response(continue_stream())
 
 
-async def process_survey_stream(survey_graph, current_state, conversation_id):
+async def process_survey_stream(survey_graph, current_state, conversation_id, template_id, db: AsyncSession):
     """处理调研流式输出的公共逻辑"""
     config = {"configurable": {"thread_id": conversation_id}}
+    saved_message_count = 0  # 已保存的消息数量（用于确定消息顺序）
+    
+    # 初始化已保存消息数量
+    existing_messages = await ChatService.get_messages_by_conversation_id(db, conversation_id, include_system=True)
+    saved_message_count = len(existing_messages)
 
     try:
         async for event in survey_graph.graph.astream_events(current_state, config=config):
@@ -130,11 +169,79 @@ async def process_survey_stream(survey_graph, current_state, conversation_id):
                 if isinstance(chunk, dict) and not "__interrupt__" in chunk:
                     for node_name, node_state in chunk.items():
                         if isinstance(node_state, dict) and "messages" in node_state:
-                            last_message = node_state["messages"][-1]
-                            if hasattr(last_message, 'content') and isinstance(last_message, AIMessage):
-                                content = last_message.content
-                                yield f"data: {json.dumps(content, ensure_ascii=False)}\n\n"
+                            messages = node_state["messages"]
+                            # 保存新增的消息
+                            if len(messages) > saved_message_count:
+                                for i in range(saved_message_count, len(messages)):
+                                    msg = messages[i]
+                                    # 跳过系统消息（已在开始时保存），但需要增加计数以保持顺序正确
+                                    if isinstance(msg, SystemMessage):
+                                        saved_message_count += 1
+                                        continue
+                                    saved_message_count += 1
+                                    try:
+                                        await ChatService.save_message(
+                                            db=db,
+                                            conversation_id=conversation_id,
+                                            message=msg,
+                                            message_order=saved_message_count
+                                        )
+                                    except Exception as e:
+                                        logger.error(f"保存消息失败: {str(e)}")
+                                
+                                # 更新会话记录的消息数量
+                                try:
+                                    await ChatService.create_or_update_conversation(
+                                        db=db,
+                                        conversation_id=conversation_id,
+                                        template_id=template_id,
+                                        message_count=saved_message_count
+                                    )
+                                except Exception as e:
+                                    logger.error(f"更新会话记录失败: {str(e)}")
+                            
+                            # 流式输出最后一条AI消息
+                            if messages:
+                                last_message = messages[-1]
+                                if hasattr(last_message, 'content') and isinstance(last_message, AIMessage):
+                                    content = last_message.content
+                                    yield f"data: {json.dumps(content, ensure_ascii=False)}\n\n"
                             break
+            
+            # 监听节点结束事件，检查是否到了结束节点
+            if event["event"] == "on_chain_end":
+                node_name = event.get("name", "")
+                if node_name == "end_survey":
+                    # 确保所有消息都已保存
+                    try:
+                        # 获取最终的消息列表
+                        final_state = event.get("data", {}).get("output", {})
+                        if isinstance(final_state, dict) and "messages" in final_state:
+                            messages = final_state["messages"]
+                            # 保存剩余的消息
+                            for i in range(saved_message_count, len(messages)):
+                                msg = messages[i]
+                                # 跳过系统消息（已在开始时保存），但需要增加计数以保持顺序正确
+                                if isinstance(msg, SystemMessage):
+                                    saved_message_count += 1
+                                    continue
+                                saved_message_count += 1
+                                await ChatService.save_message(
+                                    db=db,
+                                    conversation_id=conversation_id,
+                                    message=msg,
+                                    message_order=saved_message_count
+                                )
+                            # 更新会话记录
+                            await ChatService.create_or_update_conversation(
+                                db=db,
+                                conversation_id=conversation_id,
+                                template_id=template_id,
+                                message_count=saved_message_count
+                            )
+                    except Exception as e:
+                        logger.error(f"保存最终消息失败: {str(e)}")
+                        
     except Exception as e:
         logger.error(f"流式处理失败: {str(e)}")
         yield f"data: {json.dumps(f'处理流式输出时出现错误: {str(e)}', ensure_ascii=False)}\n\n"
@@ -171,7 +278,6 @@ def return_response(func):
 
 class ChatLogSummary(BaseModel):
     """聊天记录摘要"""
-    filename: str
     conversation_id: str
     timestamp: str
     created_at: str
@@ -179,32 +285,20 @@ class ChatLogSummary(BaseModel):
 
 
 @router.get("/chat/history")
-async def get_chat_history():
+async def get_chat_history(db: AsyncSession = Depends(get_db)):
     """获取所有聊天记录列表"""
     try:
-        log_files = chat_logger.list_chat_logs()
+        conversations = await ChatService.get_conversation_list(db)
         history = []
         
-        for file_path in log_files:
-            try:
-                # 读取文件获取基本信息
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    log_data = json.load(f)
-                
-                filename = os.path.basename(file_path)
-                history.append(ChatLogSummary(
-                    filename=filename,
-                    conversation_id=log_data.get("conversation_id", ""),
-                    timestamp=log_data.get("timestamp", ""),
-                    created_at=log_data.get("created_at", ""),
-                    message_count=log_data.get("message_count", 0)
-                ))
-            except Exception as e:
-                logger.error(f"读取聊天记录文件失败 {file_path}: {str(e)}")
-                continue
+        for conv in conversations:
+            history.append(ChatLogSummary(
+                conversation_id=conv.conversation_id,
+                timestamp=conv.timestamp,
+                created_at=conv.create_datetime.isoformat() if conv.create_datetime else "",
+                message_count=conv.message_count or 0
+            ))
         
-        # 按创建时间倒序排列（最新的在前）
-        history.sort(key=lambda x: x.timestamp, reverse=True)
         return history
         
     except Exception as e:
@@ -212,31 +306,17 @@ async def get_chat_history():
         return []
 
 
-@router.get("/chat/history/{filename}")
-async def get_chat_log_detail(filename: str):
+@router.get("/chat/history/{conversation_id}")
+async def get_chat_log_detail(conversation_id: str, db: AsyncSession = Depends(get_db)):
     """获取单个聊天记录的详细信息"""
     try:
-        # 安全检查：只允许访问 chat_logs 目录下的文件
-        if not filename.endswith('.json') or '..' in filename or '/' in filename:
-            return {"error": "无效的文件名"}
+        # 从数据库获取会话详情
+        detail = await ChatService.get_conversation_detail(db, conversation_id)
         
-        file_path = os.path.join(chat_logger.log_path, filename)
+        if not detail:
+            return {"error": "会话记录不存在"}
         
-        # 检查文件是否存在
-        if not os.path.exists(file_path):
-            return {"error": "文件不存在"}
-        
-        # 读取并返回聊天记录
-        log_data = chat_logger.load_chat_log(file_path)
-        
-        # 过滤消息，只返回用户和AI的消息（不返回系统消息）
-        filtered_messages = [
-            msg for msg in log_data.get("messages", [])
-            if msg.get("type") in ["HumanMessage", "AIMessage"]
-        ]
-        
-        log_data["messages"] = filtered_messages
-        return log_data
+        return detail
         
     except Exception as e:
         logger.error(f"获取聊天记录详情失败: {str(e)}")

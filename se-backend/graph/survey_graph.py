@@ -9,7 +9,6 @@ from services.service_manager import service_manager
 from utils.custom_serializer import CustomSerializer
 from typing import Dict, Any
 from utils.unified_logger import get_logger
-from utils.chat_logger import ChatLogger
 from langchain_core.messages.ai import AIMessage
 import os
 
@@ -36,9 +35,6 @@ class SurveyGraph():
         self.store = service_manager.store
         self.steps = steps
         self.checkpointer = MemorySaver(serde=CustomSerializer())
-
-        chat_log_path = getattr(self.config, 'chat_log_path', 'logs/chat_logs') if self.config else 'logs/chat_logs'
-        self.chat_logger = ChatLogger(chat_log_path)
 
         self.graph = self._build_graph()
 
@@ -170,7 +166,9 @@ class SurveyGraph():
         return updated_state
 
     def _end_survey(self, state: SurveyGraphState):
-        """结束调研节点 - 输出配置的结束语并保存聊天记录"""
+        """结束调研节点 - 输出配置的结束语
+        注意：聊天记录现在由 survey.py 中的流式处理函数实时保存到数据库
+        """
         end_message = state.get("end_message")
         end_ai_message = AIMessage(content=end_message)
 
@@ -178,11 +176,7 @@ class SurveyGraph():
         messages = state["messages"] + [end_ai_message]
         conversation_id = state.get("thread_id")
 
-        try:
-            saved_path = self.chat_logger.save_chat_log(messages, conversation_id)
-            self.logger.info(f"调研会话结束，聊天记录已保存到: {saved_path}")
-        except Exception as e:
-            self.logger.error(f"保存聊天记录失败: {str(e)}")
+        self.logger.info(f"调研会话结束: {conversation_id}")
 
         updated_state = {
             **state,

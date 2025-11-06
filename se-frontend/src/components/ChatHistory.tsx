@@ -31,10 +31,10 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({ onBack }) => {
     }
   };
 
-  const handleViewDetail = async (filename: string) => {
+  const handleViewDetail = async (conversation_id: string) => {
     try {
       setLoadingDetail(true);
-      const detail = await ApiService.getChatLogDetail(filename);
+      const detail = await ApiService.getChatLogDetail(conversation_id);
       if (detail) {
         setSelectedLog(detail);
       }
@@ -119,7 +119,7 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({ onBack }) => {
       ) : (
         <div className="history-list">
           {history.map((item) => (
-            <div key={item.filename} className="history-item">
+            <div key={item.conversation_id} className="history-item">
               <div className="history-item-info">
                 <div className="history-item-header">
                   <span className="history-item-id">会话ID: {item.conversation_id}</span>
@@ -130,7 +130,7 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({ onBack }) => {
                 </div>
               </div>
               <button
-                onClick={() => handleViewDetail(item.filename)}
+                onClick={() => handleViewDetail(item.conversation_id)}
                 className="view-detail-button"
                 disabled={loadingDetail}
               >
