@@ -8,7 +8,5 @@ wheels/
 
 # Virtual environments
 .venv
-.env
+.env*
 logs/*
-template/survey_template.json
-template/host_config.json
