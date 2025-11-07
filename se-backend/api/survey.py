@@ -1,5 +1,6 @@
 import json
 import os
+import asyncio
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -118,26 +119,62 @@ async def continue_survey(request: ContinueRequest):
 async def process_survey_stream(survey_graph, current_state, conversation_id):
     """处理调研流式输出的公共逻辑"""
     config = {"configurable": {"thread_id": conversation_id}}
+    end_survey_completed = False
 
     try:
         async for event in survey_graph.graph.astream_events(current_state, config=config):
             if event["event"] == "on_chat_model_end":
                 log_llm_response(event)
 
+            # 检测 end_survey 节点执行完成
+            # 检测多种事件类型以确保捕获到节点完成
+            event_name = event.get("name", "")
+            if event_name and "end_survey" in event_name:
+                if event["event"] in ["on_chain_end", "on_chain_start", "on_chain_stream"]:
+                    end_survey_completed = True
+                    logger.info(f"检测到 end_survey 节点执行，会话 {conversation_id} 即将结束")
+
             # 处理流式输出
             if event["event"] == "on_chain_stream":
                 chunk = event.get("data", {}).get("chunk", {})
                 if isinstance(chunk, dict) and not "__interrupt__" in chunk:
                     for node_name, node_state in chunk.items():
+                        # 检测是否到达 end_survey 节点
+                        if node_name == "end_survey":
+                            end_survey_completed = True
+                            logger.info(f"检测到 end_survey 节点流式输出，会话 {conversation_id} 即将结束")
+                        
                         if isinstance(node_state, dict) and "messages" in node_state:
                             last_message = node_state["messages"][-1]
                             if hasattr(last_message, 'content') and isinstance(last_message, AIMessage):
                                 content = last_message.content
                                 yield f"data: {json.dumps(content, ensure_ascii=False)}\n\n"
                             break
+        
+        # 图执行完成后，清除 Redis 状态
+        # 等待一小段时间确保所有状态都已保存
+        if end_survey_completed:
+            await asyncio.sleep(0.1)  # 等待 100ms 确保状态保存完成
+            try:
+                survey_graph.checkpointer.clear_thread_state(conversation_id)
+                logger.info(f"已清除会话 {conversation_id} 的 Redis 状态")
+            except Exception as e:
+                logger.error(f"清除 Redis 状态失败: {str(e)}")
+                
     except Exception as e:
-        logger.error(f"流式处理失败: {str(e)}")
-        yield f"data: {json.dumps(f'处理流式输出时出现错误: {str(e)}', ensure_ascii=False)}\n\n"
+        import traceback
+        error_msg = str(e) if e else "未知错误"
+        error_trace = traceback.format_exc()
+        logger.error(f"流式处理失败: {error_msg}")
+        logger.error(f"错误堆栈: {error_trace}")
+        yield f"data: {json.dumps(f'处理流式输出时出现错误: {error_msg}', ensure_ascii=False)}\n\n"
+        # 即使出错，如果已经执行了 end_survey，也尝试清除 Redis 状态
+        if end_survey_completed:
+            try:
+                survey_graph.checkpointer.clear_thread_state(conversation_id)
+                logger.info(f"已清除会话 {conversation_id} 的 Redis 状态（错误恢复后）")
+            except Exception as clear_error:
+                logger.error(f"清除 Redis 状态失败: {str(clear_error)}")
 
 
 def log_llm_response(event):

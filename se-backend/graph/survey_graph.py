@@ -1,12 +1,12 @@
 from typing import List, TypedDict
 from langchain_core.messages.base import BaseMessage
 from langchain_core.messages import HumanMessage
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 from services.service_manager import service_manager
 from utils.custom_serializer import CustomSerializer
+from utils.redis_checkpointer import RedisCheckpointer
 from typing import Dict, Any
 from utils.unified_logger import get_logger
 from utils.chat_logger import ChatLogger
@@ -35,7 +35,15 @@ class SurveyGraph():
         self.fast_llm = llms.get('fast_llm')
         self.store = service_manager.store
         self.steps = steps
-        self.checkpointer = MemorySaver(serde=CustomSerializer())
+        
+        # 使用 Redis checkpointer 替代 MemorySaver，支持分布式部署
+        redis_client = service_manager.get_redis_client()
+        self.checkpointer = RedisCheckpointer(
+            redis_client=redis_client,
+            key_prefix=self.config.redis_key_prefix,
+            serde=CustomSerializer(),
+            ttl=self.config.redis_ttl if self.config.redis_ttl > 0 else None
+        )
 
         chat_log_path = getattr(self.config, 'chat_log_path', 'logs/chat_logs') if self.config else 'logs/chat_logs'
         self.chat_logger = ChatLogger(chat_log_path)
@@ -51,16 +59,17 @@ class SurveyGraph():
         if not self.steps:
             raise ValueError("Steps列表不能为空")
 
-        for i in range(len(self.steps)):
+        length = len(self.steps)
+        for i in range(length): # type: ignore[arg-type]
             workflow.add_node(str(i) + "_q", self._generate_question)
             workflow.add_node(str(i) + "_a", self._get_user_answer)
         workflow.add_node("end_survey", self._end_survey)
 
         workflow.set_entry_point("0_q")
 
-        for i in range(len(self.steps)):
+        for i in range(length): # type: ignore[arg-type]
             edge_map = {"end_survey": "end_survey"}
-            for j in range(i, len(self.steps)):
+            for j in range(i, length): # type: ignore[arg-type]
                 edge_map[str(j) + "_a"] = str(j) + "_a"
                 edge_map[str(j) + "_q"] = str(j) + "_q"
             workflow.add_conditional_edges(
@@ -69,11 +78,11 @@ class SurveyGraph():
                 edge_map
             )
 
-        for i in range(len(self.steps)):
+        for i in range(length): # type: ignore[arg-type]
             edge_map = {"end_survey": "end_survey"}
             # 添加当前问题节点（用户回答后可能返回到同一问题节点继续提问）
             edge_map[str(i) + "_q"] = str(i) + "_q"
-            for j in range(i, len(self.steps)):
+            for j in range(i, length): # type: ignore[arg-type]
                 edge_map[str(j) + "_q"] = str(j) + "_q"
             workflow.add_conditional_edges(
                 str(i) + "_a",
@@ -83,7 +92,7 @@ class SurveyGraph():
 
         workflow.add_edge("end_survey", END)
         compile_graph = workflow.compile(checkpointer=self.checkpointer)
-        self._visualize_graph(compile_graph)
+        # self._visualize_graph(compile_graph)
         return compile_graph
 
     def _should_continue(self, state: SurveyGraphState):
@@ -114,7 +123,7 @@ class SurveyGraph():
         messages = state.get("messages")
 
         if len(current_step_messages) == 0:
-            step_message = AIMessage(content=steps[int(current_step_index)]["content"])
+            step_message = AIMessage(content=steps[int(current_step_index)]["content"]) # type: ignore[arg-type]
             messages.append(step_message)
             current_step_messages.append(step_message)
         response = self.fast_llm.invoke(messages)
@@ -128,14 +137,14 @@ class SurveyGraph():
             next_step = str(int(current_step_index) + 1) + "_q" \
                 if int(current_step_index) + 1 < len(state.get("steps")) else "end_survey"
 
-            if steps[int(current_step_index)]["type"] == "condition":
+            if steps[int(current_step_index)]["type"] == "condition": # type: ignore[arg-type]
                 conversation_context = self._assemble_conversation_context(current_step_messages)
                 condition_prompt = f"""根据对话记录分析是否满足判断条件，若满足则回复'Y'，否则回复'N'，只回答"Y"or"N"，不要其他内容。
-                判断条件：{steps[int(current_step_index)]["condition"]}
+                判断条件：{steps[int(current_step_index)]["condition"]}  
                 对话记录：{conversation_context}"""
                 response = self.fast_llm.invoke([HumanMessage(content=condition_prompt)])
                 result = response.content.strip().lower()
-                branches = steps[int(current_step_index)]["branches"]
+                branches = steps[int(current_step_index)]["branches"] # type: ignore[arg-type]
                 selected_branch = branches[0] if "y" in result or "yes" in result or "true" in result else branches[1]
                 next_step = "end_survey" if selected_branch.upper() == "END" else str(int(selected_branch) - 1) + "_q"
 
