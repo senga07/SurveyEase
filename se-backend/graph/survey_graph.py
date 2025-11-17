@@ -145,7 +145,13 @@ class SurveyGraph():
                 "current_step_messages": [],
             }
         else:
-            ai_response = AIMessage(content=response_content)
+
+            # 判断生成的问题里是否同时包含多个产品的问题，如果包含，则需要拆分成只包含一个产品的问题
+            refactor_content = self._check_and_split_multiple_products(messages, response_content)
+            if refactor_content != response_content:
+                self.logger.info(f"改写问题：{response_content}==>{refactor_content}")
+
+            ai_response = AIMessage(content=refactor_content)
             updated_state = {
                 **state,
                 "current_step": current_step_index + "_a",
@@ -211,3 +217,30 @@ class SurveyGraph():
                 self.logger.info(f"SurveyGraph 可视化图片已保存到: {png_file}")
         except Exception as e:
             self.logger.warning(f"保存可视化图片失败: {str(e)}")
+
+
+    def _check_and_split_multiple_products(self, messages: list, question: str) -> str:
+        """判断生成的问题是否包含多个产品，如果包含则拆分成只包含一个产品的问题
+
+        Args:
+            question: 待检查的问题文本
+
+        Returns:
+            如果包含多个产品，返回拆分后的第一个问题；否则返回原问题
+        """
+        try:
+            check_prompt = f"""判断以下问题是否同时包含对多个产品的进一步询问。如果包含多个产品，将其拆分只针对一个产品的问题。
+
+问题：{question}
+
+如果能拆分，则返回一个产品的问题；如果无法拆分，直接返回原问题。
+
+例如：
+正例：气泡水、茉莉花茶和果汁这三种饮品，您最近一周大概各喝了几次？（改写为：您最近一周气泡水大概喝了几次？）
+反例：除了气泡水和绿茶，最近一周您还常喝其他什么饮品吗？（不需要改写）"""
+            messages.append(HumanMessage(content=check_prompt))
+            check_response = self.fast_llm.invoke(messages)
+
+            return check_response.content.strip() if hasattr(check_response, 'content') else str(check_response)
+        except Exception as e:
+            return question
