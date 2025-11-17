@@ -238,7 +238,7 @@ class SurveyGraph():
 例如：
 正例：气泡水、茉莉花茶和果汁这三种饮品，您最近一周大概各喝了几次？（改写为：您最近一周气泡水大概喝了几次？）
 反例：除了气泡水和绿茶，最近一周您还常喝其他什么饮品吗？（不需要改写）"""
-            messages.append(HumanMessage(content=check_prompt))
+            messages.append(AIMessage(content=check_prompt))
             check_response = self.fast_llm.invoke(messages)
 
             return check_response.content.strip() if hasattr(check_response, 'content') else str(check_response)
